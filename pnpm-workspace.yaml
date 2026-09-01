@@ -1,0 +1,9 @@
+packages:
+  - shared
+  - server
+  - client
+  - agent
+
+# No package is permitted to run install scripts. kubitor has no native
+# dependencies and adding one should be a deliberate, visible change.
+allowBuilds: []

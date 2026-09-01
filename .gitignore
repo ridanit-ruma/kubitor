@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+client/.next/
+client/out/
+
+# Test scratch
+.tmptest/
+coverage/
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Working documents — process notes, not product
+docs/
+CLAUDE.md
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
