@@ -1,0 +1,14 @@
+{
+  "name": "@kubitor/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "mkdir -p .tmptest && vitest run"
+  },
+  "dependencies": {
+    "@kubitor/shared": "workspace:*",
+    "kysely": "^0.29.5"
+  }
+}
