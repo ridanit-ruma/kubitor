@@ -9,6 +9,8 @@
     // runner needs no metadata transform.
     "experimentalDecorators": true
   },
+  // The build emits sources only; `tsconfig.test.json` is what typechecks
+  // the tests, so `dist` never carries a test file or a devDependency import.
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/test/**"]
 }

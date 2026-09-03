@@ -1,0 +1,7 @@
+{
+  // Tests are typechecked; the build config above emits sources only.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

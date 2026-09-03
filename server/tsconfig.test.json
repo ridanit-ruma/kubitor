@@ -1,0 +1,13 @@
+{
+  // Tests and their harness are typechecked too.
+  //
+  // They were excluded once, and the cost was a harness that quietly stopped
+  // passing a dependency the module required: every test still ran, and the
+  // controller under test held `undefined`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}
