@@ -9,6 +9,7 @@ resources:
   - pvc.yaml
   - server.yaml
   - client.yaml
+  - agent.yaml
   - ingress.yaml
   - networkpolicy.yaml
 
@@ -21,6 +22,8 @@ labels:
 
 images:
   - name: ghcr.io/ridanit-ruma/kubitor-server
-    newTag: sha-8d91c93e80ee94d63d50be3e73ce6f7c28acd337
+    newTag: sha-b9e114d47cf36ccd33f1d4c171fc0435c195f7a8
   - name: ghcr.io/ridanit-ruma/kubitor-client
-    newTag: sha-8d91c93e80ee94d63d50be3e73ce6f7c28acd337
+    newTag: sha-b9e114d47cf36ccd33f1d4c171fc0435c195f7a8
+  - name: ghcr.io/ridanit-ruma/kubitor-agent
+    newTag: sha-b9e114d47cf36ccd33f1d4c171fc0435c195f7a8
