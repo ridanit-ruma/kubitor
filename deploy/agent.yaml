@@ -1,0 +1,123 @@
+# The optional half of kubitor: one pod per node, reading what the API server
+# cannot see.
+#
+# There is no secret here to create or distribute. Each pod mounts a projected
+# service-account token whose `kubernetes.io/node.name` claim the API server
+# signed, and the server verifies it against the cluster's public keys. That is
+# a per-node credential by construction: a compromised node cannot mint a token
+# naming a different one.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubitor-agent
+  namespace: kubitor
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubitor-agent
+  namespace: kubitor
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubitor
+      app.kubernetes.io/component: agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubitor
+        app.kubernetes.io/component: agent
+    spec:
+      serviceAccountName: kubitor-agent
+      # Host facts are per node, so a control-plane taint must not create a
+      # blind spot on exactly the machines that matter most.
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: ghcr.io/ridanit-ruma/kubitor-agent:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KUBITOR_SERVER_URL
+              value: http://kubitor-server:3001
+            - name: KUBITOR_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: kubitor-token
+              mountPath: /var/run/secrets/kubitor
+              readOnly: true
+            # Sensors, clocks and GPUs are directory trees that have to be
+            # walked; the two files below are mounted as single files, because
+            # handing a container all of /proc when it needs two entries is a
+            # habit worth not having.
+            - name: hwmon
+              mountPath: /sys/class/hwmon
+              readOnly: true
+            - name: cpu
+              mountPath: /sys/devices/system/cpu
+              readOnly: true
+            - name: drm
+              mountPath: /sys/class/drm
+              readOnly: true
+            - name: meminfo
+              mountPath: /proc/meminfo
+              readOnly: true
+            - name: loadavg
+              mountPath: /proc/loadavg
+              readOnly: true
+            - name: cpuinfo
+              mountPath: /proc/cpuinfo
+              readOnly: true
+      volumes:
+        - name: kubitor-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  # Bound to kubitor alone: a token minted for this audience is
+                  # useless against the API server itself.
+                  audience: kubitor
+                  expirationSeconds: 3600
+        - name: hwmon
+          hostPath:
+            path: /sys/class/hwmon
+            type: Directory
+        - name: cpu
+          hostPath:
+            path: /sys/devices/system/cpu
+            type: Directory
+        - name: drm
+          hostPath:
+            path: /sys/class/drm
+            type: Directory
+        - name: meminfo
+          hostPath:
+            path: /proc/meminfo
+            type: File
+        - name: loadavg
+          hostPath:
+            path: /proc/loadavg
+            type: File
+        - name: cpuinfo
+          hostPath:
+            path: /proc/cpuinfo
+            type: File

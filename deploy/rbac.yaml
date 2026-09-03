@@ -43,6 +43,18 @@ rules:
     resources: [storageclasses]
     verbs: [list]
 ---
+# The public keys that agent tokens are verified against.
+#
+# Verifying offline keeps this role read-only: `TokenReview` answers the same
+# question but is a `create`, and kubitor never writes to a cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubitor-token-verification
+rules:
+  - nonResourceURLs: ['/openid/v1/jwks', '/.well-known/openid-configuration']
+    verbs: [get]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -51,6 +63,19 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: kubitor-read
+subjects:
+  - kind: ServiceAccount
+    name: kubitor-server
+    namespace: kubitor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubitor-token-verification
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubitor-token-verification
 subjects:
   - kind: ServiceAccount
     name: kubitor-server
