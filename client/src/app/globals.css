@@ -1,0 +1,177 @@
+@import 'tailwindcss';
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * kubitor's palette encodes detection rather than decorating it.
+ *
+ * `signal` marks a value that is live right now. `blind` — amber — marks
+ * something kubitor cannot currently see: an integration whose probe was denied,
+ * or one that is installed but not delivering. It is not a warning. Severity
+ * colours (bad, good) appear only where severity is the actual meaning.
+ */
+:root {
+  --ground: #fbfcfd;
+  --surface: #ffffff;
+  --ink: #131a21;
+  --muted-ink: #5c6b79;
+  --line: #e2e8ee;
+  --signal: #0a7ea4;
+  --blind: #b4720e;
+  --bad: #c4363b;
+  --good: #1f7a4d;
+
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--signal);
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f6;
+  --secondary-foreground: var(--ink);
+  --muted: #eef2f6;
+  --muted-foreground: var(--muted-ink);
+  --accent: #eef2f6;
+  --accent-foreground: var(--ink);
+  --destructive: var(--bad);
+  --destructive-foreground: #ffffff;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--signal);
+  --radius: 0.5rem;
+  /* The rail belongs to the same instrument as the rest of the page. */
+  --sidebar: #f3f6f9;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--signal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6ecf2;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--signal);
+}
+
+.dark {
+  --ground: #0f1418;
+  --surface: #161c22;
+  --ink: #e6edf3;
+  --muted-ink: #7d8b99;
+  --line: #243039;
+  --signal: #4cc2ff;
+  --blind: #e8a33d;
+  --bad: #f2555a;
+  --good: #3fbf7f;
+
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--signal);
+  --primary-foreground: #06202b;
+  --secondary: #1d252c;
+  --secondary-foreground: var(--ink);
+  --muted: #1d252c;
+  --muted-foreground: var(--muted-ink);
+  --accent: #1d252c;
+  --accent-foreground: var(--ink);
+  --destructive: var(--bad);
+  --destructive-foreground: #1a0a0b;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--signal);
+  --sidebar: #0c1115;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--signal);
+  --sidebar-primary-foreground: #06202b;
+  --sidebar-accent: #1a222a;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--signal);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-signal: var(--signal);
+  --color-blind: var(--blind);
+  --color-bad: var(--bad);
+  --color-good: var(--good);
+  --color-line: var(--line);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, 'SFMono-Regular', monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    /* List screens fit the viewport; only their tables scroll. */
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Every figure is a measurement: align the digits. */
+  .tabular,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -33,3 +33,7 @@ CLAUDE.md
 .idea/
 .DS_Store
 *.swp
+
+# Next.js
+.next/
+next-env.d.ts

@@ -45,6 +45,7 @@ const FACET_BY_PATH: Record<string, string> = {
   events: 'events',
   'http-access': 'http.access',
   routes: 'http.routes',
+  hardware: 'host.hardware',
 };
 
 @Controller('api')

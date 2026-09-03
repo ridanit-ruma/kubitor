@@ -38,6 +38,7 @@ const QUERYABLE: Record<string, { filter: readonly string[]; search: readonly st
     filter: ['integration', 'namespace', 'type', 'kind', 'reason'],
     search: ['name', 'message', 'reason'],
   },
+  'host.hardware': { filter: ['integration', 'node'], search: ['node'] },
 };
 
 export const MAX_PAGE = 500;
@@ -87,13 +88,16 @@ export class FacetQuery {
       const search = filters.search?.trim();
       if (search && allowed.search.length > 0) {
         const pattern = `%${escapeLike(search.toLowerCase())}%`;
-        builder = builder.where(
-          // biome-ignore lint/suspicious/noExplicitAny: the table is chosen by
-          // the descriptor at runtime, so Kysely cannot name its columns here.
-          (eb: any) =>
-            eb.or(
-              allowed.search.map((column) => eb(eb.fn('lower', [eb.ref(column)]), 'like', pattern)),
+        /* The table is chosen by the descriptor at runtime, so Kysely cannot
+         * name its columns and the expression builder has no usable type. */
+        // biome-ignore lint/suspicious/noExplicitAny: explained above
+        type ExpressionBuilderLike = any;
+        builder = builder.where((eb: ExpressionBuilderLike) =>
+          eb.or(
+            allowed.search.map((column: string) =>
+              eb(eb.fn('lower', [eb.ref(column)]), 'like', pattern),
             ),
+          ),
         );
       }
 

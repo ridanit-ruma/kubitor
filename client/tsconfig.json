@@ -1,0 +1,25 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "allowJs": true,
+    "noEmit": true,
+    "declaration": false,
+    "incremental": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    // shadcn components are vendored verbatim so the CLI can update them, and
+    // several of their prop types predate this flag. The server and agent keep
+    // it on; relaxing it here is cheaper than forking the components.
+    "exactOptionalPropertyTypes": false,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

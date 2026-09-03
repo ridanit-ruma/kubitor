@@ -6,7 +6,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false
+    "ignoreUnknown": false,
+    "includes": ["**", "!client/src/components/ui", "!client/src/hooks/use-mobile.ts", "!**/*.css"]
   },
   "formatter": {
     "enabled": true,
