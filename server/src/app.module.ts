@@ -1,21 +1,28 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import type { AccountsService } from './auth/accounts.service.js';
 import type { AuthService } from './auth/auth.service.js';
+import type { LiveCache } from './collect/live-cache.js';
 import type { Config } from './config.js';
+import type { NodeSamplesRepo } from './db/node-samples.repo.js';
 import type { HealthService } from './health.service.js';
 import { AccountsController } from './http/accounts.controller.js';
 import { AuthController } from './http/auth.controller.js';
 import { CapabilitiesController } from './http/capabilities.controller.js';
 import { HealthzController } from './http/healthz.controller.js';
 import { PasswordFreshGuard } from './http/password-fresh.guard.js';
+import { QueryController } from './http/query.controller.js';
 import { SessionGuard } from './http/session.guard.js';
 import type { CapabilitiesService } from './plugins/capabilities.service.js';
+import type { FacetQuery } from './query/facet-query.js';
 import {
   ACCOUNTS_SERVICE,
   AUTH_SERVICE,
   CAPABILITIES_SERVICE,
   CONFIG,
   HEALTH_SERVICE,
+  LIVE_CACHE,
+  NODE_SAMPLES,
+  QUERY_SERVICE,
 } from './tokens.js';
 
 /**
@@ -31,6 +38,9 @@ export interface AppDeps {
   auth: AuthService;
   accounts: AccountsService;
   capabilities: CapabilitiesService;
+  query: FacetQuery;
+  samples: NodeSamplesRepo;
+  liveCache: LiveCache;
 }
 
 @Module({})
@@ -39,13 +49,22 @@ export class AppModule {}
 export function createAppModule(deps: AppDeps): DynamicModule {
   return {
     module: AppModule,
-    controllers: [HealthzController, AuthController, AccountsController, CapabilitiesController],
+    controllers: [
+      HealthzController,
+      AuthController,
+      AccountsController,
+      CapabilitiesController,
+      QueryController,
+    ],
     providers: [
       { provide: CONFIG, useValue: deps.config },
       { provide: HEALTH_SERVICE, useValue: deps.health },
       { provide: AUTH_SERVICE, useValue: deps.auth },
       { provide: ACCOUNTS_SERVICE, useValue: deps.accounts },
       { provide: CAPABILITIES_SERVICE, useValue: deps.capabilities },
+      { provide: QUERY_SERVICE, useValue: deps.query },
+      { provide: NODE_SAMPLES, useValue: deps.samples },
+      { provide: LIVE_CACHE, useValue: deps.liveCache },
       SessionGuard,
       PasswordFreshGuard,
     ],

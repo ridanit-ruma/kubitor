@@ -11,6 +11,8 @@ export interface DialectSql {
   readonly kind: DialectKind;
   /** Column type for epoch-millisecond timestamps. */
   timestampMs(): ColumnDataType;
+  /** Column type for counts that exceed 32 bits, such as byte totals. */
+  bigInt(): ColumnDataType;
   /** Column type for JSON documents. */
   json(): ColumnDataType;
   /** Extracts a top-level property from a JSON column as text. */
@@ -30,6 +32,7 @@ export interface DialectSql {
 export const SQLITE_SQL: DialectSql = {
   kind: 'sqlite',
   timestampMs: () => 'integer',
+  bigInt: () => 'integer',
   json: () => 'text',
   jsonField: (column, property) =>
     sql<string | null>`json_extract(${sql.ref(column)}, ${`$.${property}`})`,
@@ -40,6 +43,7 @@ export const SQLITE_SQL: DialectSql = {
 export const POSTGRES_SQL: DialectSql = {
   kind: 'postgres',
   timestampMs: () => 'bigint',
+  bigInt: () => 'bigint',
   json: () => 'jsonb',
   jsonField: (column, property) => sql<string | null>`${sql.ref(column)} ->> ${property}`,
   encodeJson: (value) => JSON.stringify(value),

@@ -58,7 +58,78 @@ const httpRoutes = z.object({
   attrs,
 });
 
+const nodes = z.object({
+  observed_at: z.number().int(),
+  name: text(253),
+  roles: text(MAX_TEXT),
+  ready: z.number().int().min(0).max(1),
+  kubelet_version: text(64),
+  os_image: text(MAX_TEXT),
+  architecture: text(32),
+  capacity_cpu_milli: z.number().int().min(0),
+  capacity_memory_bytes: z.number().int().min(0),
+  capacity_pods: z.number().int().min(0),
+  allocatable_cpu_milli: z.number().int().min(0),
+  allocatable_memory_bytes: z.number().int().min(0),
+  allocatable_pods: z.number().int().min(0),
+  created_at: z.number().int(),
+  attrs,
+});
+
+const workloads = z.object({
+  observed_at: z.number().int(),
+  namespace: text(253),
+  name: text(253),
+  kind: text(64),
+  node: text(253).nullish(),
+  phase: text(32),
+  ready: z.number().int().min(0).max(1),
+  restarts: z.number().int().min(0),
+  images: text(MAX_TEXT),
+  owner_kind: text(64).nullish(),
+  owner_name: text(253).nullish(),
+  created_at: z.number().int(),
+  attrs,
+});
+
+const events = z.object({
+  at: z.number().int(),
+  namespace: text(253),
+  kind: text(64),
+  name: text(253),
+  reason: text(128),
+  message: text(MAX_TEXT),
+  type: text(32),
+  count: z.number().int().min(0),
+  attrs,
+});
+
 export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
+  {
+    id: 'nodes',
+    kind: 'state',
+    table: 'facet_nodes',
+    timeColumn: 'observed_at',
+    jsonColumns: ['attrs'],
+    schema: nodes,
+  },
+  {
+    id: 'workloads',
+    kind: 'state',
+    table: 'facet_workloads',
+    timeColumn: 'observed_at',
+    jsonColumns: ['attrs'],
+    schema: workloads,
+  },
+  {
+    id: 'events',
+    kind: 'event',
+    table: 'facet_events',
+    timeColumn: 'at',
+    jsonColumns: ['attrs'],
+    retentionMs: 7 * DAY_MS,
+    schema: events,
+  },
   {
     id: 'http.access',
     kind: 'event',

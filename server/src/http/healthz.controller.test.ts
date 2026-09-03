@@ -23,9 +23,14 @@ beforeAll(async () => {
   const auth = {} as never;
   const accounts = {} as never;
   const capabilities = {} as never;
+  const query = {} as never;
+  const samples = {} as never;
+  const liveCache = {} as never;
 
   const moduleRef = await Test.createTestingModule({
-    imports: [createAppModule({ config, health, auth, accounts, capabilities })],
+    imports: [
+      createAppModule({ config, health, auth, accounts, capabilities, query, samples, liveCache }),
+    ],
   }).compile();
 
   app = moduleRef.createNestApplication();

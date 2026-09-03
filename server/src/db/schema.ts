@@ -101,6 +101,66 @@ export interface FacetHttpRoutesTable {
   attrs: string;
 }
 
+export interface FacetNodesTable {
+  observed_at: number;
+  integration: string;
+  name: string;
+  roles: string;
+  ready: number;
+  kubelet_version: string;
+  os_image: string;
+  architecture: string;
+  capacity_cpu_milli: number;
+  capacity_memory_bytes: number;
+  capacity_pods: number;
+  allocatable_cpu_milli: number;
+  allocatable_memory_bytes: number;
+  allocatable_pods: number;
+  created_at: number;
+  attrs: string;
+}
+
+export interface FacetWorkloadsTable {
+  observed_at: number;
+  integration: string;
+  namespace: string;
+  name: string;
+  kind: string;
+  node: string | null;
+  phase: string;
+  ready: number;
+  restarts: number;
+  images: string;
+  owner_kind: string | null;
+  owner_name: string | null;
+  created_at: number;
+  attrs: string;
+}
+
+export interface FacetEventsTable {
+  at: number;
+  integration: string;
+  namespace: string;
+  kind: string;
+  name: string;
+  reason: string;
+  message: string;
+  type: string;
+  count: number;
+  attrs: string;
+}
+
+export interface NodeSamplesTable {
+  at: number;
+  node: string;
+  cpu_nano_cores: number | null;
+  memory_working_set: number | null;
+  fs_used: number | null;
+  fs_capacity: number | null;
+  net_rx: number | null;
+  net_tx: number | null;
+}
+
 /** Every table kubitor stores. Later plans extend this interface. */
 export interface Database {
   settings: SettingsTable;
@@ -111,4 +171,8 @@ export interface Database {
   integration_state: IntegrationStateTable;
   facet_http_access: FacetHttpAccessTable;
   facet_http_routes: FacetHttpRoutesTable;
+  facet_nodes: FacetNodesTable;
+  facet_workloads: FacetWorkloadsTable;
+  facet_events: FacetEventsTable;
+  node_samples: NodeSamplesTable;
 }

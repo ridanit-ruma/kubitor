@@ -32,6 +32,10 @@ export const TABLES: readonly TableSpec[] = [
   { name: 'integration_state', kind: 'state' },
   { name: 'facet_http_access', kind: 'event', timeColumn: 'at', retentionMs: 14 * DAY_MS },
   { name: 'facet_http_routes', kind: 'state' },
+  { name: 'facet_nodes', kind: 'state' },
+  { name: 'facet_workloads', kind: 'state' },
+  { name: 'facet_events', kind: 'event', timeColumn: 'at', retentionMs: 7 * DAY_MS },
+  { name: 'node_samples', kind: 'event', timeColumn: 'at', retentionMs: 7 * DAY_MS },
 ];
 
 /** Kysely's own migration tables, which the registry does not govern. */

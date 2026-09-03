@@ -8,6 +8,7 @@ import { createAppModule } from '../app.module.js';
 import { AccountsService } from '../auth/accounts.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import { hashPassword } from '../auth/password.js';
+import { LiveCache } from '../collect/live-cache.js';
 import type { Config } from '../config.js';
 import { AccountEventsRepo } from '../db/account-events.repo.js';
 import { AccountsRepo } from '../db/accounts.repo.js';
@@ -16,6 +17,7 @@ import { SQLITE_SQL } from '../db/dialect.js';
 import { IntegrationStateRepo } from '../db/integration-state.repo.js';
 import { LoginAttemptsRepo } from '../db/login-attempts.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
+import { NodeSamplesRepo } from '../db/node-samples.repo.js';
 import type { Database } from '../db/schema.js';
 import { SessionsRepo } from '../db/sessions.repo.js';
 import { HealthService } from '../health.service.js';
@@ -23,6 +25,7 @@ import { CapabilitiesService } from '../plugins/capabilities.service.js';
 import type { IntegrationModule } from '../plugins/contract.js';
 import { DetectionService } from '../plugins/detection.service.js';
 import { IntegrationRegistry } from '../plugins/registry.js';
+import { FacetQuery } from '../query/facet-query.js';
 import { type FakeClusterState, fakeProbes } from './fake-probes.js';
 
 export interface TestApp {
@@ -34,6 +37,9 @@ export interface TestApp {
   accountsService: AccountsService;
   capabilities: CapabilitiesService;
   detection: DetectionService;
+  query: FacetQuery;
+  samples: NodeSamplesRepo;
+  liveCache: LiveCache;
   config: Config;
   close(): Promise<void>;
 }
@@ -87,6 +93,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     states,
     probes: fakeProbes(options.cluster ?? {}),
   });
+  const query = new FacetQuery(db, SQLITE_SQL);
+  const samples = new NodeSamplesRepo(db);
+  const liveCache = new LiveCache();
   const capabilities = new CapabilitiesService({
     registry,
     states,
@@ -103,6 +112,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         auth,
         accounts: accountsService,
         capabilities,
+        query,
+        samples,
+        liveCache,
       }),
     ],
   }).compile();
@@ -119,6 +131,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     accountsService,
     capabilities,
     detection,
+    query,
+    samples,
+    liveCache,
     config,
     async close() {
       await app.close();
