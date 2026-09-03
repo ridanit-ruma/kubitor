@@ -12,7 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatBytes, formatBytesPerSecond, formatCpu, formatPercent } from '@/lib/format';
+import {
+  formatBytes,
+  formatBytesPerSecond,
+  formatCpu,
+  formatMhz,
+  formatPercent,
+} from '@/lib/format';
 import { useLiveMetrics, useNow } from '@/lib/live';
 import { useManifest } from '@/lib/manifest-context';
 
@@ -25,7 +31,7 @@ export default function OverviewPage() {
   const totalTx = sum(live.nodes.map((node) => node.netTxBytesPerSecond));
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="screen gap-4">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-lg font-semibold tracking-tight">Overview</h1>
         <Age sampledAt={live.sampledAt} now={now} />
@@ -54,13 +60,21 @@ export default function OverviewPage() {
         <StatTile label="Transmitted" value={formatBytesPerSecond(totalTx)} />
         <StatTile
           label="Agent"
-          value={manifest?.agent.installed ? `${manifest.agent.reporting}` : 'not installed'}
-          detail={manifest?.agent.installed ? 'nodes reporting hardware' : 'host metrics optional'}
+          value={
+            manifest?.agent.installed
+              ? `${manifest.agent.reporting}/${manifest.agent.expected}`
+              : 'not installed'
+          }
+          detail={
+            manifest?.agent.installed
+              ? 'nodes reporting host metrics'
+              : 'clocks, host RAM and sensors need it'
+          }
           tone={manifest?.agent.installed ? 'normal' : 'blind'}
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line">
+      <div className="pane rounded-lg border border-line">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
@@ -76,6 +90,9 @@ export default function OverviewPage() {
               <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
                 Disk
               </TableHead>
+              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
+                Clock
+              </TableHead>
               <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] xl:table-cell">
                 Network
               </TableHead>
@@ -88,8 +105,8 @@ export default function OverviewPage() {
           <TableBody>
             {live.nodes.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No node is reporting yet. kubitor reads the kubelet every fifteen seconds.
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  No node is reporting yet. kubitor reads the kubelet every five seconds.
                 </TableCell>
               </TableRow>
             )}
@@ -120,6 +137,14 @@ export default function OverviewPage() {
                   </TableCell>
                   <TableCell className="hidden text-right tabular lg:table-cell">
                     <Meter percent={node.fsPercent} />
+                  </TableCell>
+                  <TableCell className="hidden text-right font-mono text-xs tabular lg:table-cell">
+                    {node.host ? (
+                      formatMhz(node.host.cpuMhzAverage)
+                    ) : (
+                      // Not a gap in the data: no agent runs here to measure it.
+                      <span className="text-blind">no agent</span>
+                    )}
                   </TableCell>
                   <TableCell className="hidden text-right font-mono text-xs tabular xl:table-cell">
                     ↓ {formatBytesPerSecond(node.netRxBytesPerSecond)}

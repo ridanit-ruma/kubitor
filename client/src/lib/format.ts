@@ -86,3 +86,25 @@ export function formatDuration(ms: number | null | undefined): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
 }
+
+/** Clock speed, shown in gigahertz once it is past a gigahertz. */
+export function formatMhz(mhz: number | null | undefined): string {
+  if (mhz === null || mhz === undefined || !Number.isFinite(mhz)) return '—';
+  return mhz >= 1000 ? `${(mhz / 1000).toFixed(2)} GHz` : `${Math.round(mhz)} MHz`;
+}
+
+/**
+ * A quantity against its total, in one string.
+ *
+ * The whole point is that neither half travels alone: "5.4 GiB" says nothing
+ * about pressure, and "23%" says nothing about size. Screens that show one
+ * without the other are how a memory figure gets mistaken for a disk figure.
+ */
+export function formatOfTotal(
+  used: number | null | undefined,
+  total: number | null | undefined,
+): string {
+  if (used === null || used === undefined) return '—';
+  if (total === null || total === undefined) return formatBytes(used);
+  return `${formatBytes(used)} / ${formatBytes(total)}`;
+}

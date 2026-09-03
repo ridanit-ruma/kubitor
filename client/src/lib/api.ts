@@ -73,6 +73,12 @@ export const api = {
       `/api/nodes/${encodeURIComponent(node)}/series?minutes=${minutes}`,
     ),
 
+  /** The agent's snapshot for one node, or an empty list where none reports. */
+  hostResources: (node: string) =>
+    request<{ rows: HostResourcesRow[]; total: number }>(
+      `/api/facets/resources?node=${encodeURIComponent(node)}&limit=1`,
+    ),
+
   accounts: () => request<{ accounts: AccountSummary[] }>('/api/accounts'),
 
   createAccount: (username: string, currentPassword: string) =>
@@ -110,8 +116,69 @@ export interface LiveNodeMetrics {
   memoryPercent: number | null;
   fsUsedBytes: number | null;
   fsPercent: number | null;
+  capacityCpuMilli: number | null;
+  capacityMemoryBytes: number | null;
+  fsCapacityBytes: number | null;
   netRxBytesPerSecond: number | null;
   netTxBytesPerSecond: number | null;
+  /** Present only on nodes running the agent. */
+  host?: LiveHostMetrics;
+}
+
+/** What the agent adds: the host as the kernel sees it, once a second. */
+export interface LiveHostMetrics {
+  sampledAt: number;
+  cpuMhzAverage: number | null;
+  cpuMhzMax: number | null;
+  cpuCores: number | null;
+  load1: number | null;
+  memTotalBytes: number | null;
+  memUsedBytes: number | null;
+  memAvailableBytes: number | null;
+  memPercent: number | null;
+  swapTotalBytes: number | null;
+  swapUsedBytes: number | null;
+  gpuMhz: number | null;
+  hottestCelsius: number | null;
+}
+
+export interface GpuInfo {
+  card: string;
+  driver: string | null;
+  pciId: string | null;
+  mhzCur: number | null;
+  mhzMax: number | null;
+  busyPercent: number | null;
+  memTotalBytes: number | null;
+  memUsedBytes: number | null;
+}
+
+export interface DiskInfo {
+  mount: string;
+  device: string;
+  fsType: string;
+  totalBytes: number;
+  usedBytes: number;
+}
+
+export interface HostResourcesRow extends Record<string, unknown> {
+  observed_at: number;
+  node: string;
+  cpu_model: string | null;
+  cpu_cores: number | null;
+  cpu_mhz_avg: number | null;
+  cpu_mhz_max: number | null;
+  load1: number | null;
+  load5: number | null;
+  load15: number | null;
+  mem_total_bytes: number | null;
+  mem_available_bytes: number | null;
+  mem_used_bytes: number | null;
+  mem_cached_bytes: number | null;
+  swap_total_bytes: number | null;
+  swap_used_bytes: number | null;
+  gpus: GpuInfo[];
+  disks: DiskInfo[];
 }
 
 export interface SeriesPoint {
