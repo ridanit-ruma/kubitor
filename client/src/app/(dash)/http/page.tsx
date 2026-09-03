@@ -28,32 +28,38 @@ const columns: Column<AccessRow>[] = [
   {
     key: 'at',
     header: 'When',
+    width: 'w-[15%]',
     render: (row) => <span className="font-mono text-xs">{formatTimestamp(row.at)}</span>,
   },
   {
     key: 'status',
     header: 'Status',
+    width: 'w-[9%]',
     render: (row) => <Badge variant={statusTone(row.status)}>{row.status}</Badge>,
   },
   {
     key: 'method',
     header: 'Method',
+    width: 'w-[9%]',
     render: (row) => <span className="font-mono text-xs">{row.method}</span>,
   },
   {
     key: 'path',
     header: 'Path',
+    width: 'w-[27%]',
     render: (row) => <span className="font-mono text-xs">{row.path}</span>,
   },
   {
     key: 'host',
     header: 'Host',
+    width: 'w-[18%]',
     priority: 'md',
     render: (row) => <span className="font-mono text-xs">{row.host}</span>,
   },
   {
     key: 'duration_ms',
     header: 'Took',
+    width: 'w-[10%]',
     priority: 'md',
     align: 'right',
     render: (row) => formatDuration(row.duration_ms),
@@ -61,6 +67,7 @@ const columns: Column<AccessRow>[] = [
   {
     key: 'bytes_out',
     header: 'Sent',
+    width: 'w-[8%]',
     priority: 'lg',
     align: 'right',
     render: (row) => formatBytes(row.bytes_out),
@@ -68,6 +75,7 @@ const columns: Column<AccessRow>[] = [
   {
     key: 'client_ip',
     header: 'Client',
+    width: 'w-[14%]',
     priority: 'xl',
     render: (row) => (
       <span className="font-mono text-xs text-muted-foreground">{row.client_ip}</span>
@@ -76,6 +84,7 @@ const columns: Column<AccessRow>[] = [
   {
     key: 'route',
     header: 'Router',
+    width: 'w-[16%]',
     priority: 'xl',
     render: (row) => (
       <span className="font-mono text-xs text-muted-foreground">{row.route ?? '—'}</span>
@@ -109,6 +118,7 @@ export default function HttpTrafficPage() {
         searchPlaceholder="Find a request by path, host, client or router"
         excludable
         excludePlaceholder="Hide requests matching…"
+        detailFields={['user_agent', 'service', 'node', 'integration', 'attrs']}
         {...(ownHost ? { defaultExclude: ownHost } : {})}
         emptyMessage="No request matches these filters."
       />

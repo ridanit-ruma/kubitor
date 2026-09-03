@@ -13,6 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
   Table,
   TableBody,
   TableCell,
@@ -54,6 +61,13 @@ export interface Column<Row> {
   header: string;
   priority?: ColumnPriority;
   align?: 'left' | 'right';
+  /**
+   * Share of the table's width, as a Tailwind width class.
+   *
+   * The table is fixed-layout so that nothing can push it sideways, which means
+   * a column that needs room has to ask for it.
+   */
+  width?: string;
   render(row: Row): React.ReactNode;
 }
 
@@ -80,6 +94,13 @@ interface FacetTableProps<Row> {
   onRowHref?(row: Row): string | undefined;
   /** A stable identity for the row; falls back to its whole content. */
   rowKey?(row: Row): string;
+  /**
+   * Extra fields to show when a row is opened, beyond the visible columns.
+   *
+   * Columns hidden at this width are always included; this is for values the
+   * table never shows at any width.
+   */
+  detailFields?: readonly string[];
   pageSize?: number;
   /** Offers the exclusion box. Worth it where most rows are noise. */
   excludable?: boolean;
@@ -117,6 +138,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
   emptyMessage,
   onRowHref,
   rowKey,
+  detailFields,
   pageSize = 100,
   excludable = false,
   excludePlaceholder = 'Hide rows matching…',
@@ -129,6 +151,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [opened, setOpened] = useState<Row | null>(null);
 
   // The query string is the single source of truth for what is shown, so the
   // effect below depends on it rather than on the router object.
@@ -267,9 +290,15 @@ export function FacetTable<Row extends Record<string, unknown>>({
         </div>
       </div>
 
-      {/* Only this box scrolls, and only vertically. */}
+      {/*
+       * Only this box scrolls, and only vertically.
+       *
+       * The table is fixed-layout and every cell truncates, so a long value
+       * can never push the page sideways. What gets cut off is on the row's
+       * own panel, one click away.
+       */}
       <div className="pane rounded-lg border border-line">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
               {columns.map((column) => (
@@ -278,6 +307,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
                   className={cn(
                     PRIORITY_CLASS[column.priority ?? 'always'],
                     column.align === 'right' && 'text-right',
+                    column.width,
                     'font-mono text-[11px] uppercase tracking-[0.1em]',
                   )}
                 >
@@ -312,8 +342,8 @@ export function FacetTable<Row extends Record<string, unknown>>({
               return (
                 <TableRow
                   key={rowKey ? rowKey(row) : JSON.stringify(row)}
-                  className={cn(href && 'cursor-pointer')}
-                  onClick={href ? () => router.push(href) : undefined}
+                  className="cursor-pointer"
+                  onClick={() => (href ? router.push(href) : setOpened(row))}
                 >
                   {columns.map((column) => (
                     <TableCell
@@ -321,6 +351,8 @@ export function FacetTable<Row extends Record<string, unknown>>({
                       className={cn(
                         PRIORITY_CLASS[column.priority ?? 'always'],
                         column.align === 'right' && 'text-right tabular',
+                        column.width,
+                        'max-w-0 truncate',
                       )}
                     >
                       {column.render(row)}
@@ -332,6 +364,68 @@ export function FacetTable<Row extends Record<string, unknown>>({
           </TableBody>
         </Table>
       </div>
+
+      <RowDetail
+        row={opened}
+        columns={columns}
+        extraFields={detailFields}
+        onClose={() => setOpened(null)}
+      />
     </div>
   );
+}
+
+/**
+ * Everything about one row, including what the table had to cut.
+ *
+ * A panel rather than a page: these rows are a handful of fields, and pushing
+ * the reader through a navigation to read six values they were already looking
+ * at costs more than it gives. Rows with a screen of their own get a link
+ * instead — see `onRowHref`.
+ */
+function RowDetail<Row extends Record<string, unknown>>({
+  row,
+  columns,
+  extraFields,
+  onClose,
+}: {
+  row: Row | null;
+  columns: readonly Column<Row>[];
+  extraFields: readonly string[] | undefined;
+  onClose(): void;
+}) {
+  if (!row) return null;
+
+  const fields = [...columns.map((column) => column.key), ...(extraFields ?? [])].filter(
+    (key, index, all) => all.indexOf(key) === index && key in row,
+  );
+
+  return (
+    <Sheet open onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle className="font-mono text-sm">Row detail</SheetTitle>
+          <SheetDescription>Every field, including the ones the table trims.</SheetDescription>
+        </SheetHeader>
+
+        <dl className="flex flex-col gap-3 px-4 pb-6">
+          {fields.map((key) => (
+            <div key={key}>
+              <dt className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                {key.replaceAll('_', ' ')}
+              </dt>
+              <dd className="mt-0.5 break-words font-mono text-sm">{plain(row[key])}</dd>
+            </div>
+          ))}
+        </dl>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** A field as text, without pretending an object is a string. */
+function plain(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
 }

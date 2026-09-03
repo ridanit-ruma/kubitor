@@ -21,6 +21,7 @@ const columns: Column<NodeRow>[] = [
   {
     key: 'ready',
     header: 'State',
+    width: 'w-[10%]',
     render: (row) =>
       row.ready === 1 ? (
         <Badge variant="secondary">Ready</Badge>
@@ -31,6 +32,7 @@ const columns: Column<NodeRow>[] = [
   {
     key: 'roles',
     header: 'Roles',
+    width: 'w-[12%]',
     priority: 'md',
     render: (row) => (
       <span className="font-mono text-xs">{row.roles === '' ? 'worker' : row.roles}</span>
@@ -39,18 +41,21 @@ const columns: Column<NodeRow>[] = [
   {
     key: 'capacity_cpu_milli',
     header: 'CPU',
+    width: 'w-[10%]',
     align: 'right',
     render: (row) => formatCpu(row.capacity_cpu_milli),
   },
   {
     key: 'capacity_memory_bytes',
     header: 'Memory',
+    width: 'w-[12%]',
     align: 'right',
     render: (row) => formatBytes(row.capacity_memory_bytes),
   },
   {
     key: 'capacity_pods',
     header: 'Pod slots',
+    width: 'w-[10%]',
     priority: 'lg',
     align: 'right',
     render: (row) => formatCount(row.capacity_pods),
@@ -58,12 +63,14 @@ const columns: Column<NodeRow>[] = [
   {
     key: 'kubelet_version',
     header: 'Kubelet',
+    width: 'w-[12%]',
     priority: 'lg',
     render: (row) => <span className="font-mono text-xs">{row.kubelet_version}</span>,
   },
   {
     key: 'os_image',
     header: 'OS',
+    width: 'w-[16%]',
     priority: 'xl',
     render: (row) => (
       <span className="font-mono text-xs text-muted-foreground">{row.os_image}</span>

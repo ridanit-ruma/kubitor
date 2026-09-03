@@ -19,11 +19,13 @@ const columns: Column<EventRow>[] = [
   {
     key: 'at',
     header: 'When',
+    width: 'w-[16%]',
     render: (row) => <span className="font-mono text-xs">{formatTimestamp(row.at)}</span>,
   },
   {
     key: 'type',
     header: 'Type',
+    width: 'w-[10%]',
     render: (row) => (
       <Badge variant={row.type === 'Warning' ? 'destructive' : 'secondary'}>{row.type}</Badge>
     ),
@@ -32,6 +34,7 @@ const columns: Column<EventRow>[] = [
   {
     key: 'name',
     header: 'Object',
+    width: 'w-[20%]',
     priority: 'md',
     render: (row) => (
       <span className="font-mono text-xs">
@@ -42,12 +45,14 @@ const columns: Column<EventRow>[] = [
   {
     key: 'namespace',
     header: 'Namespace',
+    width: 'w-[13%]',
     priority: 'lg',
     render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
   },
   {
     key: 'message',
     header: 'Message',
+    width: 'w-[32%]',
     priority: 'xl',
     render: (row) => <span className="text-xs text-muted-foreground">{row.message}</span>,
   },
@@ -62,6 +67,7 @@ export default function EventsPage() {
         facet="events"
         columns={columns}
         filters={[{ key: 'type', label: 'Types', values: ['Normal', 'Warning'] }]}
+        detailFields={['kind', 'integration']}
         searchPlaceholder="Find an event by object, reason or message"
         emptyMessage="No event matches these filters."
       />

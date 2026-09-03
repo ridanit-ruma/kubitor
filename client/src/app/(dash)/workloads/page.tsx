@@ -22,17 +22,20 @@ const columns: Column<WorkloadRow>[] = [
   {
     key: 'namespace',
     header: 'Namespace',
+    width: 'w-[15%]',
     render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
   },
   {
     key: 'node',
     header: 'Node',
+    width: 'w-[11%]',
     priority: 'md',
     render: (row) => <span className="font-mono text-xs">{row.node ?? '—'}</span>,
   },
   {
     key: 'phase',
     header: 'Phase',
+    width: 'w-[11%]',
     render: (row) => (
       <Badge variant={row.phase === 'Running' && row.ready === 1 ? 'secondary' : 'outline'}>
         {row.phase}
@@ -43,6 +46,7 @@ const columns: Column<WorkloadRow>[] = [
   {
     key: 'restarts',
     header: 'Restarts',
+    width: 'w-[9%]',
     priority: 'md',
     align: 'right',
     render: (row) => (
@@ -54,12 +58,14 @@ const columns: Column<WorkloadRow>[] = [
   {
     key: 'images',
     header: 'Image',
+    width: 'w-[22%]',
     priority: 'xl',
     render: (row) => <span className="font-mono text-xs text-muted-foreground">{row.images}</span>,
   },
   {
     key: 'created_at',
     header: 'Created',
+    width: 'w-[15%]',
     priority: 'lg',
     align: 'right',
     render: (row) => (
@@ -104,6 +110,7 @@ export default function WorkloadsPage() {
           { key: 'phase', label: 'Phases', values: ['Running', 'Pending', 'Succeeded', 'Failed'] },
         ]}
         searchPlaceholder="Find a pod by name, image or owner"
+        detailFields={['owner_kind', 'owner_name', 'ready', 'kind', 'integration']}
         emptyMessage="No pod matches these filters."
       />
     </div>
