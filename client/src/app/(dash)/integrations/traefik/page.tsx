@@ -3,6 +3,7 @@
 import { type Column, FacetTable } from '@/components/facet-table';
 import { Badge } from '@/components/ui/badge';
 import { useManifest } from '@/lib/manifest-context';
+import { encodeRouteId } from '@/lib/route-id';
 
 interface TraefikRouteRow extends Record<string, unknown> {
   kind: string;
@@ -18,18 +19,38 @@ interface TraefikRouteRow extends Record<string, unknown> {
 
 const columns: Column<TraefikRouteRow>[] = [
   {
-    key: 'host',
-    header: 'Host',
+    key: 'name',
+    header: 'Router',
+    width: 'w-[26%]',
     render: (row) => (
       <span className="font-mono text-xs">
-        {row.host}
-        <span className="text-muted-foreground">{row.path}</span>
+        {row.name}
+        <span className="text-muted-foreground"> · {row.namespace}</span>
+      </span>
+    ),
+  },
+  {
+    key: 'match',
+    header: 'Match rule',
+    width: 'w-[38%]',
+    // Traefik's own matcher expression, verbatim. This is the string an
+    // operator compares against their manifest when a route misbehaves, and the
+    // reason this screen exists next to the vendor-neutral Routes list.
+    render: (row) => (
+      <span className="font-mono text-xs">
+        {row.attrs?.match ?? (
+          <span className="text-muted-foreground">
+            Host(`{row.host}`)
+            {row.path && row.path !== '/' ? ` && PathPrefix(\`${row.path}\`)` : ''}
+          </span>
+        )}
       </span>
     ),
   },
   {
     key: 'kind',
-    header: 'Kind',
+    header: 'Declared as',
+    width: 'w-[16%]',
     render: (row) => (
       <Badge variant={row.kind === 'IngressRoute' ? 'secondary' : 'outline'}>{row.kind}</Badge>
     ),
@@ -37,6 +58,8 @@ const columns: Column<TraefikRouteRow>[] = [
   {
     key: 'service',
     header: 'Service',
+    width: 'w-[20%]',
+    priority: 'md',
     render: (row) => (
       <span className="font-mono text-xs">
         {row.service}
@@ -44,55 +67,34 @@ const columns: Column<TraefikRouteRow>[] = [
       </span>
     ),
   },
-  {
-    key: 'tls',
-    header: 'TLS',
-    priority: 'md',
-    render: (row) =>
-      row.tls === 1 ? (
-        <Badge variant="secondary">TLS</Badge>
-      ) : (
-        <Badge variant="outline">plain</Badge>
-      ),
-  },
-  {
-    key: 'namespace',
-    header: 'Namespace',
-    priority: 'md',
-    render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
-  },
-  {
-    key: 'name',
-    header: 'Object',
-    priority: 'lg',
-    render: (row) => <span className="font-mono text-xs text-muted-foreground">{row.name}</span>,
-  },
-  {
-    key: 'match',
-    header: 'Match rule',
-    priority: 'xl',
-    // Traefik's own matcher expression, kept verbatim: it is the thing an
-    // operator compares against their manifest when a route misbehaves.
-    render: (row) => (
-      <span className="font-mono text-xs text-muted-foreground">{row.attrs?.match ?? '—'}</span>
-    ),
-  },
 ];
 
+/**
+ * Traefik's own model of what it is routing.
+ *
+ * Deliberately not a second copy of the Routes list. Routes answers "what
+ * address does this cluster answer on", the same way whichever ingress is
+ * installed; this answers "what has Traefik been told", in Traefik's own terms —
+ * router names and matcher expressions, which is what an operator compares
+ * against a manifest when an address does not behave.
+ */
 export default function TraefikRoutersPage() {
   const { manifest } = useManifest();
   const traefik = manifest?.integrations.find((integration) => integration.id === 'traefik');
 
   return (
     <div className="screen gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-lg font-semibold tracking-tight">Traefik routers</h1>
-        {traefik?.version && (
-          <span className="font-mono text-xs text-muted-foreground">{traefik.version}</span>
-        )}
-        {traefik?.evidence && (
-          <span className="font-mono text-xs text-muted-foreground">· {traefik.evidence}</span>
-        )}
+      <div>
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h1 className="text-lg font-semibold tracking-tight">Traefik routers</h1>
+          {traefik?.version && (
+            <span className="font-mono text-xs text-muted-foreground">{traefik.version}</span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Traefik&rsquo;s own matcher rules. For the cluster&rsquo;s addresses regardless of
+          ingress, see Routes.
+        </p>
       </div>
 
       <FacetTable<TraefikRouteRow>
@@ -100,8 +102,17 @@ export default function TraefikRoutersPage() {
         columns={columns}
         fixed={{ integration: 'traefik' }}
         filters={[{ key: 'kind', label: 'Kinds', values: ['Ingress', 'IngressRoute'] }]}
-        searchPlaceholder="Find a router by host, path or service"
+        searchPlaceholder="Find a router by name, host or service"
         emptyMessage="Traefik is running, but no Ingress or IngressRoute has been collected yet."
+        onRowHref={(row) =>
+          `/routes/${encodeRouteId({
+            kind: row.kind,
+            namespace: row.namespace,
+            name: row.name,
+            host: row.host,
+            path: row.path,
+          })}`
+        }
       />
     </div>
   );
