@@ -1,4 +1,5 @@
 import { readCpu } from './cpufreq.js';
+import { createCpuMeter } from './cpustat.js';
 import { type DiskReading, readDisks } from './disks.js';
 import { readGpus } from './gpu.js';
 import { readHwmonTemperatures } from './hwmon.js';
@@ -10,6 +11,8 @@ export interface HostReading extends Record<string, unknown> {
   node: string;
   cpu_model: string | null;
   cpu_cores: number | null;
+  /** How busy the machine was over the last interval, 0-100. */
+  cpu_percent: number | null;
   cpu_mhz_avg: number | null;
   cpu_mhz_max: number | null;
   load1: number | null;
@@ -37,6 +40,7 @@ export interface HostReading extends Record<string, unknown> {
 export function createHostCollector(node: string, diskRefreshMs = 15_000) {
   let disks: DiskReading[] = [];
   let disksReadAt = 0;
+  const cpuBusy = createCpuMeter();
 
   return async function collect(now: number): Promise<HostReading> {
     if (now - disksReadAt >= diskRefreshMs) {
@@ -44,8 +48,9 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
       disksReadAt = now;
     }
 
-    const [cpu, memory, gpus, temps] = await Promise.all([
+    const [cpu, cpuPercent, memory, gpus, temps] = await Promise.all([
       readCpu(),
+      cpuBusy(),
       readMemory(),
       readGpus(),
       readHwmonTemperatures(),
@@ -67,6 +72,7 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
       node,
       cpu_model: cpu.model,
       cpu_cores: cpu.cores,
+      cpu_percent: cpuPercent,
       cpu_mhz_avg: cpu.mhzAverage,
       cpu_mhz_max: cpu.mhzMax,
       load1: cpu.load1,

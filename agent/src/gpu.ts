@@ -9,9 +9,20 @@ export interface GpuReading {
   pciId: string | null;
   mhzCur: number | null;
   mhzMax: number | null;
+  /** Memory clock, where the driver publishes one. */
+  memMhzCur: number | null;
+  memMhzMax: number | null;
   busyPercent: number | null;
   memTotalBytes: number | null;
   memUsedBytes: number | null;
+  /**
+   * True when the GPU has no memory of its own and uses system RAM.
+   *
+   * The distinction matters on screen: an integrated GPU reporting no VRAM is
+   * not a driver that failed to answer, and showing a blank there would read as
+   * one.
+   */
+  memShared: boolean;
 }
 
 const DRM_ROOT = '/sys/class/drm';
@@ -50,17 +61,50 @@ export async function readGpus(root = DRM_ROOT): Promise<GpuReading[]> {
       pciId,
       mhzCur: await currentClock(cardDir, deviceDir),
       mhzMax: await maximumClock(cardDir, deviceDir),
+      memMhzCur: activeDpmLine(await maybeRead(join(deviceDir, 'pp_dpm_mclk'))),
+      memMhzMax: highestDpmLine(await maybeRead(join(deviceDir, 'pp_dpm_mclk'))),
       busyPercent: clampPercent(await maybeNumber(join(deviceDir, 'gpu_busy_percent'))),
-      // amdgpu reports VRAM in bytes already.
-      memTotalBytes: await maybeNumber(join(deviceDir, 'mem_info_vram_total')),
-      memUsedBytes: await maybeNumber(join(deviceDir, 'mem_info_vram_used')),
+      ...(await memory(cardDir, deviceDir)),
     });
   }
 
   return readings;
 }
 
+/**
+ * Dedicated video memory, and whether there is any.
+ *
+ * amdgpu publishes both figures in bytes; Intel's discrete cards publish a
+ * total only. An integrated GPU publishes neither because it has none — it
+ * carves out system RAM — so it is reported as shared rather than as unknown.
+ */
+async function memory(
+  cardDir: string,
+  deviceDir: string,
+): Promise<Pick<GpuReading, 'memTotalBytes' | 'memUsedBytes' | 'memShared'>> {
+  const amd = await maybeNumber(join(deviceDir, 'mem_info_vram_total'));
+  if (amd !== null) {
+    return {
+      memTotalBytes: amd,
+      memUsedBytes: await maybeNumber(join(deviceDir, 'mem_info_vram_used')),
+      memShared: false,
+    };
+  }
+
+  const intel = await maybeNumber(join(cardDir, 'lmem_total_bytes'));
+  if (intel !== null) {
+    return { memTotalBytes: intel, memUsedBytes: null, memShared: false };
+  }
+
+  return { memTotalBytes: null, memUsedBytes: null, memShared: true };
+}
+
 async function currentClock(cardDir: string, deviceDir: string): Promise<number | null> {
+  // The frequency the hardware actually settled at, where it is published;
+  // `gt_cur_freq_mhz` is the one the driver asked for.
+  const actual = await maybeNumber(join(cardDir, 'gt_act_freq_mhz'));
+  if (actual !== null) return actual;
+
   const i915 = await maybeNumber(join(cardDir, 'gt_cur_freq_mhz'));
   if (i915 !== null) return i915;
 
