@@ -162,6 +162,16 @@ async function bootstrap(): Promise<void> {
     states: new IntegrationStateRepo(db, dialect),
     probes,
   });
+  // Detection is what decides whether the agent's screens exist, so a node
+  // appearing for the first time re-runs it rather than waiting out the
+  // five-minute sweep. Wired here because it needs the detection service, which
+  // in turn needs the module list the agent belongs to.
+  hostIngest.onFirstReport((node) => {
+    void detection.runOnce(Date.now()).catch((error: unknown) => {
+      logger.warn(`Detection after ${node} first reported failed: ${String(error)}`);
+    });
+  });
+
   const capabilities = new CapabilitiesService({
     registry,
     states: new IntegrationStateRepo(db, dialect),

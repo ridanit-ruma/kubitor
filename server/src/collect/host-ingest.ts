@@ -59,10 +59,24 @@ export class HostIngest {
   readonly #latest = new Map<string, HostReading>();
   readonly #persistIntervalMs: number;
   #lastPersistedAt = 0;
+  #onFirstReport: ((node: string) => void) | undefined;
 
   constructor(deps: HostIngestDeps) {
     this.#deps = deps;
     this.#persistIntervalMs = deps.persistIntervalMs ?? HOST_PERSIST_INTERVAL_MS;
+  }
+
+  /**
+   * Called when a node reports for the first time.
+   *
+   * Detection decides whether the agent's screens exist, and it sweeps every
+   * five minutes. Without this the Hardware screen disappears for up to five
+   * minutes after every server restart, while agents that are plainly running
+   * are reported as absent. Registered after construction because the detection
+   * service needs the module list this ingest feeds.
+   */
+  onFirstReport(listener: (node: string) => void): void {
+    this.#onFirstReport = listener;
   }
 
   /** Accepts one node's readings. Returns how many were usable. */
@@ -76,8 +90,10 @@ export class HostIngest {
       if (!parsed.success) continue;
 
       accepted += 1;
+      const firstReport = !this.#latest.has(node);
       this.#latest.set(node, parsed.data);
       this.#deps.cache.recordHost(node, toLiveMetrics(parsed.data, now));
+      if (firstReport) this.#onFirstReport?.(node);
     }
 
     if (accepted > 0) await this.#maybePersist(now);

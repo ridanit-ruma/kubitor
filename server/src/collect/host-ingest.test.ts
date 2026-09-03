@@ -131,6 +131,22 @@ describeEachDialect('HostIngest', (ctx) => {
     expect(cache.reportingHosts(NOW)).toEqual(['calder']);
   });
 
+  /**
+   * Detection decides whether the agent's screens exist and sweeps every five
+   * minutes, so without this the Hardware screen is missing for up to five
+   * minutes after every server restart.
+   */
+  it('announces a node the first time it reports, and only then', async () => {
+    const announced: string[] = [];
+    ingest.onFirstReport((node) => announced.push(node));
+
+    await ingest.accept('calder', [reading()], NOW);
+    await ingest.accept('calder', [reading({ at: NOW + 1000 })], NOW + 1000);
+    await ingest.accept('decker', [reading({ at: NOW + 2000 })], NOW + 2000);
+
+    expect(announced).toEqual(['calder', 'decker']);
+  });
+
   it('accepts a machine with no swap, no GPU and no readable sensor', async () => {
     const bare = reading({ swap_total_bytes: 0, gpus: [], disks: [], temps: {}, gpu_mhz: null });
     const accepted = await ingest.accept('calder', [bare], NOW);
