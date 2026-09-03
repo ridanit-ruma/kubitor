@@ -3,7 +3,9 @@
 FROM node:26-alpine AS build
 WORKDIR /repo
 
-RUN corepack enable
+# Node 26 images no longer bundle corepack; pin pnpm to the version in
+# package.json's packageManager field.
+RUN npm install -g pnpm@11.3.0
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY shared/package.json shared/
 COPY server/package.json server/
