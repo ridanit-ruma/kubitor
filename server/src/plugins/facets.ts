@@ -108,8 +108,41 @@ const hostHardware = z.object({
   at: z.number().int(),
   node: text(253),
   cpu_mhz: z.number().int().min(0).nullish(),
+  gpu_mhz: z.number().int().min(0).nullish(),
+  /** Host RAM in use, which is not the kubelet's container working set. */
+  mem_used_bytes: z.number().int().min(0).nullish(),
   /** Sensor label to degrees Celsius. A sensor that cannot be read is absent. */
   temps: z.record(z.string(), z.number()).default({}),
+  attrs,
+});
+
+/**
+ * What the machine is, as opposed to what it is doing.
+ *
+ * A state facet: one row per node, replaced on every sync. Totals live here so
+ * a screen never has to infer capacity from a percentage, which is how RAM and
+ * disk end up looking like each other.
+ */
+const hostResources = z.object({
+  observed_at: z.number().int(),
+  node: text(253),
+  cpu_model: text(MAX_TEXT).nullish(),
+  cpu_cores: z.number().int().min(0).nullish(),
+  cpu_mhz_avg: z.number().int().min(0).nullish(),
+  cpu_mhz_max: z.number().int().min(0).nullish(),
+  load1: z.number().min(0).nullish(),
+  load5: z.number().min(0).nullish(),
+  load15: z.number().min(0).nullish(),
+  mem_total_bytes: z.number().int().min(0).nullish(),
+  mem_available_bytes: z.number().int().min(0).nullish(),
+  mem_used_bytes: z.number().int().min(0).nullish(),
+  mem_cached_bytes: z.number().int().min(0).nullish(),
+  swap_total_bytes: z.number().int().min(0).nullish(),
+  swap_used_bytes: z.number().int().min(0).nullish(),
+  /** `{name, driver, mhzCur, mhzMax, busyPercent, memTotal, memUsed, celsius}` */
+  gpus: z.array(z.record(z.string(), z.unknown())).default([]),
+  /** `{mount, device, fsType, totalBytes, usedBytes}` */
+  disks: z.array(z.record(z.string(), z.unknown())).default([]),
   attrs,
 });
 
@@ -122,6 +155,14 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     jsonColumns: ['temps', 'attrs'],
     retentionMs: 7 * DAY_MS,
     schema: hostHardware,
+  },
+  {
+    id: 'host.resources',
+    kind: 'state',
+    table: 'facet_host_resources',
+    timeColumn: 'observed_at',
+    jsonColumns: ['gpus', 'disks', 'attrs'],
+    schema: hostResources,
   },
   {
     id: 'nodes',

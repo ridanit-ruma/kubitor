@@ -10,6 +10,7 @@ export const FACET_IDS = [
   'network.flows',
   'gitops.sync',
   'host.hardware',
+  'host.resources',
   'host.sessions',
   'security.alerts',
 ] as const;
@@ -34,6 +35,7 @@ export const FACET_KIND: Record<FacetId, FacetKind> = {
   'network.flows': 'event',
   'gitops.sync': 'state',
   'host.hardware': 'event',
+  'host.resources': 'state',
   'host.sessions': 'event',
   'security.alerts': 'event',
 };

@@ -173,7 +173,31 @@ export interface FacetHostHardwareTable {
   integration: string;
   node: string;
   cpu_mhz: number | null;
+  gpu_mhz: number | null;
+  mem_used_bytes: number | null;
   temps: string;
+  attrs: string;
+}
+
+export interface FacetHostResourcesTable {
+  observed_at: number;
+  integration: string;
+  node: string;
+  cpu_model: string | null;
+  cpu_cores: number | null;
+  cpu_mhz_avg: number | null;
+  cpu_mhz_max: number | null;
+  load1: number | null;
+  load5: number | null;
+  load15: number | null;
+  mem_total_bytes: number | null;
+  mem_available_bytes: number | null;
+  mem_used_bytes: number | null;
+  mem_cached_bytes: number | null;
+  swap_total_bytes: number | null;
+  swap_used_bytes: number | null;
+  gpus: string;
+  disks: string;
   attrs: string;
 }
 
@@ -193,4 +217,5 @@ export interface Database {
   node_samples: NodeSamplesTable;
   agent_tokens: AgentTokensTable;
   facet_host_hardware: FacetHostHardwareTable;
+  facet_host_resources: FacetHostResourcesTable;
 }
