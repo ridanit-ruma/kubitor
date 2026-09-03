@@ -20,7 +20,16 @@ export interface TableSpec {
  * Every table kubitor owns. A migration that creates a table without adding it
  * here fails `tables.test.ts` — that is the point.
  */
-export const TABLES: readonly TableSpec[] = [{ name: 'settings', kind: 'config' }];
+const DAY_MS = 86_400_000;
+
+export const TABLES: readonly TableSpec[] = [
+  { name: 'settings', kind: 'config' },
+  { name: 'accounts', kind: 'state' },
+  { name: 'sessions', kind: 'state' },
+  // Only needed long enough to enforce the lockout window.
+  { name: 'login_attempts', kind: 'event', timeColumn: 'at', retentionMs: DAY_MS },
+  { name: 'account_events', kind: 'event', timeColumn: 'at', retentionMs: 90 * DAY_MS },
+];
 
 /** Kysely's own migration tables, which the registry does not govern. */
 export const MIGRATION_BOOKKEEPING_TABLES: readonly string[] = [
