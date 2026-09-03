@@ -14,6 +14,7 @@ export const hostReadingSchema = z.object({
   node: z.string().max(253),
   cpu_model: z.string().max(1024).nullish(),
   cpu_cores: z.number().int().min(0).max(4096).nullish(),
+  cpu_percent: z.number().min(0).max(100).nullish(),
   cpu_mhz_avg: z.number().int().min(0).nullish(),
   cpu_mhz_max: z.number().int().min(0).nullish(),
   load1: z.number().min(0).nullish(),
@@ -113,6 +114,7 @@ export class HostIngest {
         at: reading.at,
         node: reading.node,
         cpu_mhz: reading.cpu_mhz_avg ?? null,
+        cpu_percent: reading.cpu_percent ?? null,
         gpu_mhz: reading.gpu_mhz ?? null,
         mem_used_bytes: reading.mem_used_bytes ?? null,
         temps: reading.temps,
@@ -129,6 +131,7 @@ export class HostIngest {
         node: reading.node,
         cpu_model: reading.cpu_model ?? null,
         cpu_cores: reading.cpu_cores ?? null,
+        cpu_percent: reading.cpu_percent ?? null,
         cpu_mhz_avg: reading.cpu_mhz_avg ?? null,
         cpu_mhz_max: reading.cpu_mhz_max ?? null,
         load1: reading.load1 ?? null,
@@ -159,6 +162,7 @@ export function toLiveMetrics(reading: HostReading, now: number): LiveHostMetric
     // The agent's own clock decides how old this is, but a clock that is ahead
     // of ours would make the reading look like it arrives from the future.
     sampledAt: Math.min(reading.at, now),
+    cpuPercent: reading.cpu_percent ?? null,
     cpuMhzAverage: reading.cpu_mhz_avg ?? null,
     cpuMhzMax: reading.cpu_mhz_max ?? null,
     cpuCores: reading.cpu_cores ?? null,

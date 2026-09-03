@@ -173,6 +173,7 @@ export interface FacetHostHardwareTable {
   integration: string;
   node: string;
   cpu_mhz: number | null;
+  cpu_percent: number | null;
   gpu_mhz: number | null;
   mem_used_bytes: number | null;
   temps: string;
@@ -185,6 +186,7 @@ export interface FacetHostResourcesTable {
   node: string;
   cpu_model: string | null;
   cpu_cores: number | null;
+  cpu_percent: number | null;
   cpu_mhz_avg: number | null;
   cpu_mhz_max: number | null;
   load1: number | null;

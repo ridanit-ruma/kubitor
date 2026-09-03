@@ -37,6 +37,8 @@ export interface LiveNodeMetrics {
 export interface LiveHostMetrics {
   /** When the agent took this reading. Its own clock, its own cadence. */
   sampledAt: number;
+  /** Measured from `/proc/stat`, so it needs no capacity beside it to read. */
+  cpuPercent: number | null;
   cpuMhzAverage: number | null;
   cpuMhzMax: number | null;
   cpuCores: number | null;

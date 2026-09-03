@@ -108,6 +108,7 @@ const hostHardware = z.object({
   at: z.number().int(),
   node: text(253),
   cpu_mhz: z.number().int().min(0).nullish(),
+  cpu_percent: z.number().min(0).max(100).nullish(),
   gpu_mhz: z.number().int().min(0).nullish(),
   /** Host RAM in use, which is not the kubelet's container working set. */
   mem_used_bytes: z.number().int().min(0).nullish(),
@@ -128,6 +129,7 @@ const hostResources = z.object({
   node: text(253),
   cpu_model: text(MAX_TEXT).nullish(),
   cpu_cores: z.number().int().min(0).nullish(),
+  cpu_percent: z.number().min(0).max(100).nullish(),
   cpu_mhz_avg: z.number().int().min(0).nullish(),
   cpu_mhz_max: z.number().int().min(0).nullish(),
   load1: z.number().min(0).nullish(),
