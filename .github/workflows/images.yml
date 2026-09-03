@@ -38,6 +38,8 @@ jobs:
           context: .
           file: ${{ matrix.image }}/Dockerfile
           push: true
+          build-args: |
+            KUBITOR_VERSION=${{ github.sha }}
           # `latest` moves, and a commit-pinned tag is what a release bumps to,
           # so a running pod never changes underneath itself.
           tags: |

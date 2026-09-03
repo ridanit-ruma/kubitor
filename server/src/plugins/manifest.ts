@@ -14,6 +14,7 @@ export interface ManifestInput {
   registry: IntegrationRegistry;
   states: readonly StoredIntegrationState[];
   agent: AgentStatus;
+  kubitor: { version: string };
   cluster: { version: string; nodes: number };
   /** Navigation the core always provides, before integrations add to it. */
   coreNav: readonly NavEntry[];
@@ -61,6 +62,7 @@ export function buildManifest(input: ManifestInput): CapabilityManifest {
 
   return {
     generatedAt: input.generatedAt,
+    kubitor: input.kubitor,
     cluster: input.cluster,
     agent: input.agent,
     integrations,

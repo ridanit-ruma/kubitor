@@ -106,6 +106,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const agentTokens = new AgentTokensRepo(db);
   const hostIngest = new HostIngest({ cache: liveCache, pipeline });
   const capabilities = new CapabilitiesService({
+    version: 'test',
     registry,
     states,
     detection,

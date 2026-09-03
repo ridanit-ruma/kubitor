@@ -49,6 +49,8 @@ export interface ClusterFacts {
 }
 
 export interface CapabilitiesDeps {
+  /** The build this server is, reported so the client never shows the cluster's. */
+  version: string;
   registry: IntegrationRegistry;
   states: IntegrationStateRepo;
   detection: DetectionService;
@@ -76,6 +78,7 @@ export class CapabilitiesService {
       states,
       agent,
       cluster,
+      kubitor: { version: this.#deps.version },
       coreNav: CORE_NAV,
       generatedAt: now,
     });

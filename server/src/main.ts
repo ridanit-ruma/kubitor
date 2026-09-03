@@ -48,6 +48,8 @@ const RETENTION_INTERVAL_MS = 10 * 60_000;
  * a SQLite file on one PVC gets destroyed.
  */
 const SAMPLE_PERSIST_INTERVAL_MS = 15_000;
+/** This build, baked in by CI. Reported so the client never shows the cluster's. */
+const KUBITOR_VERSION = process.env.KUBITOR_VERSION ?? 'dev';
 /** The audience the agent's projected token must carry. */
 const AGENT_TOKEN_AUDIENCE = 'kubitor';
 /** The only service account whose projected token may report host metrics. */
@@ -173,6 +175,7 @@ async function bootstrap(): Promise<void> {
   });
 
   const capabilities = new CapabilitiesService({
+    version: KUBITOR_VERSION,
     registry,
     states: new IntegrationStateRepo(db, dialect),
     detection,

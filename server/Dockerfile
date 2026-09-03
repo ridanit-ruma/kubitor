@@ -25,6 +25,11 @@ RUN pnpm deploy --filter @kubitor/server --prod --legacy /out
 
 FROM node:26-alpine
 WORKDIR /app
+
+# What this build is, so the dashboard can name its own version rather than
+# borrowing the cluster's. Supplied by CI as the commit it was built from.
+ARG KUBITOR_VERSION=dev
+ENV KUBITOR_VERSION=$KUBITOR_VERSION
 ENV NODE_ENV=production
 
 COPY --from=build /out /app

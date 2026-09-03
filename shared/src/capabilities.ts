@@ -68,6 +68,13 @@ export interface AgentStatus {
 
 export interface CapabilityManifest {
   generatedAt: number;
+  /**
+   * kubitor's own build, which is not the cluster's version.
+   *
+   * They were shown in the same place once, and a Kubernetes version rendered
+   * beside the product name reads as the product's version.
+   */
+  kubitor: { version: string };
   cluster: { version: string; nodes: number };
   agent: AgentStatus;
   integrations: IntegrationStatus[];
