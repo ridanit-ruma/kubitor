@@ -91,6 +91,11 @@ export class LiveGateway {
     socket.on('pong', () => {
       client.alive = true;
     });
+    socket.on('message', (raw) => {
+      // The client answers the application-level ping below. Anything else it
+      // sends is ignored: this socket is one-directional by design.
+      if (String(raw).includes('pong')) client.alive = true;
+    });
     socket.on('close', () => this.#clients.delete(client));
     socket.on('error', () => this.#clients.delete(client));
   }
@@ -116,6 +121,14 @@ export class LiveGateway {
     }
   }
 
+  /**
+   * Two pings, deliberately.
+   *
+   * A protocol-level ping is the correct mechanism, but some proxies — a
+   * Cloudflare tunnel among them — do not forward WebSocket control frames, and
+   * a connection that is healthy end-to-end then gets terminated here for not
+   * answering. The JSON ping travels as ordinary data and always arrives.
+   */
   #heartbeat(): void {
     for (const client of [...this.#clients]) {
       if (!client.alive) {
@@ -123,8 +136,12 @@ export class LiveGateway {
         this.#clients.delete(client);
         continue;
       }
+
       client.alive = false;
       client.socket.ping();
+      if (client.socket.readyState === client.socket.OPEN) {
+        client.socket.send(JSON.stringify({ topic: 'ping', generatedAt: this.#deps.now() }));
+      }
     }
   }
 

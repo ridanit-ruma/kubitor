@@ -19,6 +19,9 @@ function metrics(node: string, sampledAt: number): LiveNodeMetrics {
     memoryPercent: 10,
     fsUsedBytes: 1024,
     fsPercent: 5,
+    capacityCpuMilli: 4000,
+    capacityMemoryBytes: 10_240,
+    fsCapacityBytes: 20_480,
     netRxBytesPerSecond: 100,
     netTxBytesPerSecond: 200,
   };
