@@ -63,16 +63,13 @@ export function hostAgentIntegration(deps: HostAgentDeps): IntegrationModule {
       return [];
     },
 
-    nav: [
-      {
-        id: 'hardware',
-        title: 'Hardware',
-        category: 'hosts',
-        href: '/hardware',
-        requiresFacet: 'host.resources',
-        order: 0,
-      },
-    ],
+    /*
+     * No navigation of its own.
+     *
+     * Host facts belong to the node they describe, so they appear on the node's
+     * own screens. A separate Hardware entry made the reader hold two pages in
+     * their head to answer one question about one machine.
+     */
   };
 }
 

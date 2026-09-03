@@ -39,7 +39,7 @@ describe('hostAgentIntegration detection', () => {
   });
 });
 
-describe('the Hardware screen reaches the sidebar', () => {
+describe('the agent enables the facets its screens read', () => {
   function manifestFor(reporting: string[], expected: number) {
     const module = integration(reporting, expected);
 
@@ -58,6 +58,7 @@ describe('the Hardware screen reaches the sidebar', () => {
         },
       ],
       agent: { installed: reporting.length > 0, reporting: reporting.length, expected, stale: [] },
+      kubitor: { version: 'test' },
       cluster: { version: 'v1.36.3', nodes: expected },
       coreNav: [],
       generatedAt: 0,
@@ -65,24 +66,34 @@ describe('the Hardware screen reaches the sidebar', () => {
   }
 
   /**
-   * The regression this whole module exists to prevent.
+   * The regression this module exists to prevent.
    *
-   * A facet appears on screen only when a `present` integration declares it.
-   * The agents can be reporting on every node, the rows can be in the database,
-   * and the screen still stays hidden if nothing claims the facet — which is
-   * exactly what shipped the first time.
+   * A facet is available only when a `present` integration declares it. The
+   * agents can be reporting on every node and the rows can be in the database,
+   * and the screens that read those rows still stay empty if nothing claims the
+   * facet — which is exactly what shipped the first time.
    */
-  it('offers Hardware once the agent is reporting', () => {
+  it('makes host facets available once the agent is reporting', () => {
     const manifest = manifestFor(['calder'], 1);
 
     expect(manifest.facets['host.resources']?.enabled).toBe(true);
-    expect(manifest.nav.map((entry) => entry.href)).toContain('/hardware');
+    expect(manifest.facets['host.hardware']?.enabled).toBe(true);
+    expect(manifest.facets['host.resources']?.sources).toContain('host-agent');
   });
 
-  it('hides Hardware when no agent has reported', () => {
+  it('leaves them unavailable when no agent has reported', () => {
     const manifest = manifestFor([], 4);
 
     expect(manifest.facets['host.resources']?.enabled).toBe(false);
-    expect(manifest.nav.map((entry) => entry.href)).not.toContain('/hardware');
+    expect(manifest.facets['host.hardware']?.enabled).toBe(false);
+  });
+
+  /**
+   * Host facts describe a node, so they appear on that node's screens. A
+   * separate entry made the reader hold two pages in their head to answer one
+   * question about one machine.
+   */
+  it('adds no navigation of its own', () => {
+    expect(manifestFor(['calder'], 1).nav).toEqual([]);
   });
 });
