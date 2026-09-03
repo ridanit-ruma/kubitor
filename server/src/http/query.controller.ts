@@ -24,19 +24,23 @@ export const EXPORT_ROW_CAP = 100_000;
 
 const listQuery = z.object({
   search: z.string().max(256).optional(),
+  exclude: z.string().max(256).optional(),
   since: z.coerce.number().int().optional(),
   until: z.coerce.number().int().optional(),
   limit: z.coerce.number().int().min(1).max(500).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
 
+/**
+ * The longest window a chart may ask for.
+ *
+ * Matched to `node_samples` retention: offering a range the data cannot cover
+ * would draw an authoritative-looking chart that is mostly absence.
+ */
+export const MAX_SERIES_MINUTES = 7 * 24 * 60;
+
 const seriesQuery = z.object({
-  minutes: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(24 * 60)
-    .default(60),
+  minutes: z.coerce.number().int().min(1).max(MAX_SERIES_MINUTES).default(60),
 });
 
 const FACET_BY_PATH: Record<string, string> = {
@@ -46,6 +50,7 @@ const FACET_BY_PATH: Record<string, string> = {
   'http-access': 'http.access',
   routes: 'http.routes',
   hardware: 'host.hardware',
+  resources: 'host.resources',
 };
 
 @Controller('api')
@@ -194,13 +199,16 @@ function filtersFrom(query: Record<string, string>): QueryFilters {
 
   const equals: Record<string, string> = {};
   for (const [key, value] of Object.entries(query)) {
-    if (['search', 'since', 'until', 'limit', 'offset', 'format'].includes(key)) continue;
+    if (['search', 'exclude', 'since', 'until', 'limit', 'offset', 'format'].includes(key)) {
+      continue;
+    }
     if (typeof value === 'string') equals[key] = value;
   }
 
   return {
     equals,
     ...(parsed.data.search !== undefined ? { search: parsed.data.search } : {}),
+    ...(parsed.data.exclude !== undefined ? { exclude: parsed.data.exclude } : {}),
     ...(parsed.data.since !== undefined ? { since: parsed.data.since } : {}),
     ...(parsed.data.until !== undefined ? { until: parsed.data.until } : {}),
     ...(parsed.data.limit !== undefined ? { limit: parsed.data.limit } : {}),

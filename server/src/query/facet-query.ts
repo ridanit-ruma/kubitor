@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely';
+import { type Kysely, sql } from 'kysely';
 import type { DialectSql } from '../db/dialect.js';
 import type { Database } from '../db/schema.js';
 import { type FacetDescriptor, facetDescriptor } from '../plugins/facets.js';
@@ -8,6 +8,14 @@ export interface QueryFilters {
   equals?: Record<string, string>;
   /** Case-insensitive substring match across the facet's searchable columns. */
   search?: string;
+  /**
+   * Rows matching this substring are hidden.
+   *
+   * The counterpart to `search`, and the reason it exists: on a busy cluster
+   * most of what an access log holds is traffic the reader already knows about,
+   * and the useful question is "everything except that" rather than "only this".
+   */
+  exclude?: string;
   since?: number;
   until?: number;
   limit?: number;
@@ -39,6 +47,7 @@ const QUERYABLE: Record<string, { filter: readonly string[]; search: readonly st
     search: ['name', 'message', 'reason'],
   },
   'host.hardware': { filter: ['integration', 'node'], search: ['node'] },
+  'host.resources': { filter: ['integration', 'node'], search: ['node', 'cpu_model'] },
 };
 
 export const MAX_PAGE = 500;
@@ -85,19 +94,26 @@ export class FacetQuery {
         builder = builder.where(descriptor.timeColumn, '<=', filters.until);
       }
 
+      /* The table is chosen by the descriptor at runtime, so Kysely cannot
+       * name its columns and the expression builder has no usable type. */
+      // biome-ignore lint/suspicious/noExplicitAny: explained above
+      type ExpressionBuilderLike = any;
+
       const search = filters.search?.trim();
       if (search && allowed.search.length > 0) {
-        const pattern = `%${escapeLike(search.toLowerCase())}%`;
-        /* The table is chosen by the descriptor at runtime, so Kysely cannot
-         * name its columns and the expression builder has no usable type. */
-        // biome-ignore lint/suspicious/noExplicitAny: explained above
-        type ExpressionBuilderLike = any;
         builder = builder.where((eb: ExpressionBuilderLike) =>
-          eb.or(
-            allowed.search.map((column: string) =>
-              eb(eb.fn('lower', [eb.ref(column)]), 'like', pattern),
-            ),
-          ),
+          eb.or(allowed.search.map((column) => matches(column, search))),
+        );
+      }
+
+      const exclude = filters.exclude?.trim();
+      if (exclude && allowed.search.length > 0) {
+        // `NOT (a OR b)` is the wrong shape here: a nullable column makes the
+        // OR unknown rather than false, `NOT unknown` is unknown, and the row
+        // is dropped. Requiring every column to not match keeps the nulls —
+        // which `matches` has already coalesced — out of the logic.
+        builder = builder.where((eb: ExpressionBuilderLike) =>
+          eb.and(allowed.search.map((column) => eb.not(matches(column, exclude)))),
         );
       }
 
@@ -165,6 +181,20 @@ function coerce(column: string, value: string): string | number {
     return Number(value);
   }
   return value;
+}
+
+/**
+ * Case-insensitive substring match on one column.
+ *
+ * Written as raw SQL for two reasons. `coalesce` keeps a nullable column out of
+ * three-valued logic, so a row with no user agent is simply "does not match"
+ * rather than "unknown". And `ESCAPE` has to be stated: PostgreSQL assumes a
+ * backslash, SQLite assumes nothing at all, so without it the escaping below
+ * silently means different things on the two dialects kubitor supports.
+ */
+function matches(column: string, term: string) {
+  const pattern = `%${escapeLike(term.toLowerCase())}%`;
+  return sql<boolean>`lower(coalesce(${sql.ref(column)}, '')) like ${pattern} escape '\\'`;
 }
 
 /** `%` and `_` are wildcards in LIKE; a user searching for them means literals. */
