@@ -28,6 +28,7 @@ beforeAll(async () => {
   const liveCache = {} as never;
   const pipeline = {} as never;
   const agentTokens = {} as never;
+  const hostIngest = {} as never;
 
   const moduleRef = await Test.createTestingModule({
     imports: [
@@ -42,6 +43,8 @@ beforeAll(async () => {
         liveCache,
         pipeline,
         agentTokens,
+        hostIngest,
+        saVerifier: null,
       }),
     ],
   }).compile();

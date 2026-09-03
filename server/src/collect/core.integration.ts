@@ -4,8 +4,16 @@ import type { Collector, Emission, IntegrationModule } from '../plugins/contract
 
 /** How often the cluster shape is re-read. */
 const STATE_INTERVAL_MS = 15_000;
-/** How often node metrics are persisted — not how often they are pushed. */
-const SAMPLE_INTERVAL_MS = 15_000;
+/**
+ * How often the kubelet is asked for metrics.
+ *
+ * Not how often they are stored, and not how often they are pushed: those are
+ * three different rates. Five seconds is the honest floor here — cAdvisor's
+ * housekeeping means a faster poll returns the same numbers with more load on
+ * the API server. Genuine per-second values come from the agent, which reads
+ * `/proc` directly.
+ */
+const SAMPLE_INTERVAL_MS = 5_000;
 const EVENT_INTERVAL_MS = 30_000;
 
 /**

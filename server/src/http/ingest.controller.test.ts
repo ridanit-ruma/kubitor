@@ -157,3 +157,82 @@ describe('AgentTokensRepo', () => {
     expect(rows[0]?.token_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+describe('POST /api/ingest/host', () => {
+  function host(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      at: Date.now(),
+      node: 'a-node-the-caller-is-not',
+      cpu_mhz_avg: 2300,
+      cpu_mhz_max: 4400,
+      mem_total_bytes: 24_955_392_000,
+      mem_available_bytes: 22_000_000_000,
+      mem_used_bytes: 2_955_392_000,
+      gpus: [],
+      disks: [],
+      temps: {},
+      ...overrides,
+    };
+  }
+
+  it('accepts a reading and makes it live immediately', async () => {
+    await http()
+      .post('/api/ingest/host')
+      .set('authorization', `Bearer ${token}`)
+      .send({ rows: [host()] })
+      .expect(202);
+
+    expect(harness.liveCache.reportingHosts(Date.now())).toEqual(['ken']);
+  });
+
+  /**
+   * The credential names the node. A row claiming another one is rewritten, so
+   * a single compromised agent cannot fabricate a healthy-looking fleet.
+   */
+  it('ignores the node a row claims to be', async () => {
+    await http()
+      .post('/api/ingest/host')
+      .set('authorization', `Bearer ${token}`)
+      .send({ rows: [host({ node: 'calder' })] })
+      .expect(202);
+
+    expect(harness.liveCache.reportingHosts(Date.now())).toEqual(['ken']);
+  });
+
+  it('refuses a request with no credential', async () => {
+    await http()
+      .post('/api/ingest/host')
+      .send({ rows: [host()] })
+      .expect(401);
+  });
+
+  it('refuses an unknown credential', async () => {
+    await http()
+      .post('/api/ingest/host')
+      .set('authorization', 'Bearer not-a-real-token')
+      .send({ rows: [host()] })
+      .expect(401);
+  });
+
+  it('keeps the batch when one reading is malformed', async () => {
+    const response = await http()
+      .post('/api/ingest/host')
+      .set('authorization', `Bearer ${token}`)
+      .send({ rows: [{ at: 'nonsense' }, host()] })
+      .expect(202);
+
+    expect(response.body.accepted).toBe(1);
+    expect(response.body.dropped).toBe(1);
+  });
+
+  it('records when the node was last heard from', async () => {
+    await http()
+      .post('/api/ingest/host')
+      .set('authorization', `Bearer ${token}`)
+      .send({ rows: [host()] })
+      .expect(202);
+
+    const [entry] = await harness.agentTokens.list();
+    expect(entry?.lastSeenAt).not.toBeNull();
+  });
+});

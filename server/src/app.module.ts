@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import type { AccountsService } from './auth/accounts.service.js';
 import type { AuthService } from './auth/auth.service.js';
+import type { HostIngest } from './collect/host-ingest.js';
 import type { LiveCache } from './collect/live-cache.js';
 import type { Config } from './config.js';
 import type { AgentTokensRepo } from './db/agent-tokens.repo.js';
@@ -14,6 +15,7 @@ import { IngestController } from './http/ingest.controller.js';
 import { PasswordFreshGuard } from './http/password-fresh.guard.js';
 import { QueryController } from './http/query.controller.js';
 import { SessionGuard } from './http/session.guard.js';
+import type { ServiceAccountVerifier } from './kube/sa-token.js';
 import type { CapabilitiesService } from './plugins/capabilities.service.js';
 import type { IngestPipeline } from './plugins/ingest.js';
 import type { FacetQuery } from './query/facet-query.js';
@@ -24,10 +26,12 @@ import {
   CAPABILITIES_SERVICE,
   CONFIG,
   HEALTH_SERVICE,
+  HOST_INGEST,
   INGEST_PIPELINE,
   LIVE_CACHE,
   NODE_SAMPLES,
   QUERY_SERVICE,
+  SA_VERIFIER,
 } from './tokens.js';
 
 /**
@@ -48,6 +52,9 @@ export interface AppDeps {
   liveCache: LiveCache;
   pipeline: IngestPipeline;
   agentTokens: AgentTokensRepo;
+  hostIngest: HostIngest;
+  /** Absent outside a cluster, where no projected token can be verified. */
+  saVerifier: ServiceAccountVerifier | null;
 }
 
 @Module({})
@@ -75,6 +82,8 @@ export function createAppModule(deps: AppDeps): DynamicModule {
       { provide: LIVE_CACHE, useValue: deps.liveCache },
       { provide: INGEST_PIPELINE, useValue: deps.pipeline },
       { provide: AGENT_TOKENS, useValue: deps.agentTokens },
+      { provide: HOST_INGEST, useValue: deps.hostIngest },
+      { provide: SA_VERIFIER, useValue: deps.saVerifier },
       SessionGuard,
       PasswordFreshGuard,
     ],

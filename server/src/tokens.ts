@@ -16,3 +16,5 @@ export const NODE_SAMPLES = Symbol('kubitor.nodeSamples');
 export const LIVE_CACHE = Symbol('kubitor.liveCache');
 export const INGEST_PIPELINE = Symbol('kubitor.ingestPipeline');
 export const AGENT_TOKENS = Symbol('kubitor.agentTokens');
+export const HOST_INGEST = Symbol('kubitor.hostIngest');
+export const SA_VERIFIER = Symbol('kubitor.serviceAccountVerifier');

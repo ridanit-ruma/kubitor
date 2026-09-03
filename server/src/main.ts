@@ -6,6 +6,7 @@ import { createAppModule } from './app.module.js';
 import { AccountsService } from './auth/accounts.service.js';
 import { AuthService } from './auth/auth.service.js';
 import { coreIntegration } from './collect/core.integration.js';
+import { HostIngest } from './collect/host-ingest.js';
 import { LiveCache } from './collect/live-cache.js';
 import { CollectorScheduler } from './collect/scheduler.js';
 import { loadConfig } from './config.js';
@@ -26,6 +27,7 @@ import { LiveGateway } from './http/ws.gateway.js';
 import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
+import { clusterJwksReader, ownNamespace, ServiceAccountVerifier } from './kube/sa-token.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
 import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
 import { INTEGRATIONS } from './plugins/index.js';
@@ -37,6 +39,18 @@ import { FacetQuery } from './query/facet-query.js';
 const BOOTSTRAP_USERNAME = 'admin';
 /** Pruning runs often enough that a burst cannot outrun it. */
 const RETENTION_INTERVAL_MS = 10 * 60_000;
+/**
+ * How often a kubelet sample is written down.
+ *
+ * The kubelet is read every five seconds so the dashboard moves; only one
+ * reading in fifteen reaches the database. Storing at the sampling rate is how
+ * a SQLite file on one PVC gets destroyed.
+ */
+const SAMPLE_PERSIST_INTERVAL_MS = 15_000;
+/** The audience the agent's projected token must carry. */
+const AGENT_TOKEN_AUDIENCE = 'kubitor';
+/** The only service account whose projected token may report host metrics. */
+const AGENT_SERVICE_ACCOUNT = process.env.KUBITOR_AGENT_SERVICE_ACCOUNT ?? 'kubitor-agent';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('kubitor');
@@ -96,10 +110,36 @@ async function bootstrap(): Promise<void> {
   const query = new FacetQuery(db, dialect);
   const agentTokens = new AgentTokensRepo(db);
 
+  const hostIngest = new HostIngest({ cache: liveCache, pipeline });
+
+  // Verifying a projected token needs the cluster's public keys, so this only
+  // exists in a cluster. Elsewhere the static per-node tokens remain the way in.
+  const namespace = await ownNamespace();
+  const saVerifier =
+    kube && namespace
+      ? new ServiceAccountVerifier({
+          jwks: clusterJwksReader(),
+          audience: AGENT_TOKEN_AUDIENCE,
+          namespace,
+          serviceAccount: AGENT_SERVICE_ACCOUNT,
+          now: () => Date.now(),
+        })
+      : null;
+
+  if (kube && !namespace) {
+    logger.warn('No service-account namespace on disk; agents must use static tokens.');
+  }
+
+  const persistedAt = new Map<string, number>();
   const modules = kube
     ? [
         coreIntegration(kube, async (sample) => {
           liveCache.record(sample);
+
+          // Every sample reaches the cache; one in fifteen seconds reaches disk.
+          const last = persistedAt.get(sample.node) ?? 0;
+          if (sample.at - last < SAMPLE_PERSIST_INTERVAL_MS) return;
+          persistedAt.set(sample.node, sample.at);
           await samples.record(sample);
         }),
         traefikIntegration(kube),
@@ -122,7 +162,25 @@ async function bootstrap(): Promise<void> {
       version: kube ? await kube.serverVersion() : 'unknown',
       nodes: kube ? (await kube.listNodes()).length : 0,
     }),
-    agentStatus: async () => ({ installed: false, reporting: 0, expected: 0, stale: [] }),
+    agentStatus: async () => {
+      const now = Date.now();
+      const reporting = liveCache.reportingHosts(now);
+      const known = await agentTokens.list();
+      const expected = kube ? (await kube.listNodes()).length : reporting.length;
+
+      return {
+        // "Installed" means a node has actually reported, not that a manifest
+        // exists: a DaemonSet that cannot reach the server is not installed
+        // from the dashboard's point of view.
+        installed: reporting.length > 0,
+        reporting: reporting.length,
+        expected,
+        stale: known
+          .map((token) => token.node)
+          .filter((node) => !reporting.includes(node))
+          .sort(),
+      };
+    },
   });
 
   await detection.runOnce(Date.now());
@@ -171,6 +229,8 @@ async function bootstrap(): Promise<void> {
       liveCache,
       pipeline,
       agentTokens,
+      hostIngest,
+      saVerifier,
     }),
   );
 

@@ -8,6 +8,7 @@ import { createAppModule } from '../app.module.js';
 import { AccountsService } from '../auth/accounts.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import { hashPassword } from '../auth/password.js';
+import { HostIngest } from '../collect/host-ingest.js';
 import { LiveCache } from '../collect/live-cache.js';
 import type { Config } from '../config.js';
 import { AccountEventsRepo } from '../db/account-events.repo.js';
@@ -44,6 +45,7 @@ export interface TestApp {
   liveCache: LiveCache;
   pipeline: IngestPipeline;
   agentTokens: AgentTokensRepo;
+  hostIngest: HostIngest;
   config: Config;
   close(): Promise<void>;
 }
@@ -102,6 +104,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const liveCache = new LiveCache();
   const pipeline = new IngestPipeline(db, SQLITE_SQL);
   const agentTokens = new AgentTokensRepo(db);
+  const hostIngest = new HostIngest({ cache: liveCache, pipeline });
   const capabilities = new CapabilitiesService({
     registry,
     states,
@@ -123,6 +126,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         liveCache,
         pipeline,
         agentTokens,
+        hostIngest,
+        // No cluster here, so no projected token can be verified: the harness
+        // exercises the static-token path, as an out-of-cluster agent would.
+        saVerifier: null,
       }),
     ],
   }).compile();
@@ -144,6 +151,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     liveCache,
     pipeline,
     agentTokens,
+    hostIngest,
     config,
     async close() {
       await app.close();
