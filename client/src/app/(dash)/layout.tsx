@@ -57,8 +57,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <CommandPalette manifest={manifest} />
               <div className="ml-auto flex items-center gap-3">
                 {manifest && (
+                  // The cluster's version, labelled as the cluster's. It used
+                  // to sit beside the product name, where it read as kubitor's.
                   <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                    {manifest.cluster.nodes} nodes
+                    Kubernetes {manifest.cluster.version} · {manifest.cluster.nodes} nodes
                   </span>
                 )}
                 <Button variant="ghost" size="sm" onClick={() => void signOut()}>

@@ -81,6 +81,7 @@ const ICONS: Record<string, LucideIcon> = {
 export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }) {
   const pathname = usePathname();
   const entries = manifest?.nav ?? [];
+  const active = activeHref(entries, pathname);
 
   return (
     <Sidebar collapsible="icon">
@@ -88,8 +89,10 @@ export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }
         <Link href="/" className="flex items-baseline gap-2">
           <span className="text-lg font-semibold tracking-tight">kubitor</span>
           {manifest && (
+            // kubitor's own build. The cluster's version belongs to the cluster,
+            // and printing it here made it read as the product's.
             <span className="font-mono text-[11px] text-muted-foreground">
-              {manifest.cluster.version}
+              {shortVersion(manifest.kubitor.version)}
             </span>
           )}
         </Link>
@@ -110,7 +113,7 @@ export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }
               <SidebarGroupContent>
                 <SidebarMenu>
                   {inCategory.map((entry) => (
-                    <NavRow key={entry.id} entry={entry} pathname={pathname} />
+                    <NavRow key={entry.id} entry={entry} active={entry.href === active} />
                   ))}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -122,9 +125,35 @@ export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }
   );
 }
 
-function NavRow({ entry, pathname }: { entry: NavEntry; pathname: string }) {
+/**
+ * The one entry the current path belongs to.
+ *
+ * Longest match wins, and a match must end at a path segment. Both matter:
+ * `/settings/accounts` starts with `/settings`, so a plain prefix test lit up
+ * two rows at once and left the reader unsure which screen they were on.
+ */
+function activeHref(entries: readonly NavEntry[], pathname: string): string | null {
+  let best: string | null = null;
+
+  for (const entry of entries) {
+    const matches =
+      entry.href === '/'
+        ? pathname === '/'
+        : pathname === entry.href || pathname.startsWith(`${entry.href}/`);
+
+    if (matches && (best === null || entry.href.length > best.length)) best = entry.href;
+  }
+
+  return best;
+}
+
+/** A commit is identified by its first characters; the rest is noise in a header. */
+function shortVersion(version: string): string {
+  return /^[0-9a-f]{40}$/.test(version) ? version.slice(0, 7) : version;
+}
+
+function NavRow({ entry, active }: { entry: NavEntry; active: boolean }) {
   const Icon = ICONS[entry.id] ?? Activity;
-  const active = entry.href === '/' ? pathname === '/' : pathname.startsWith(entry.href);
 
   return (
     <SidebarMenuItem>
