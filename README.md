@@ -19,8 +19,13 @@ Everything you can see, you can export as JSON or CSV with your filters applied.
 `KUBITOR_ADMIN_INITIAL_PASSWORD`.
 
 The server needs read access to the cluster and a volume for its SQLite file;
-both are in the manifests. The agent is optional — install it only if you want
-host temperatures and clocks.
+both are in the manifests.
+
+The agent is optional. Install it to see host RAM, CPU and GPU clocks, mounted
+filesystems and temperatures — none of which the Kubernetes API can answer. It
+needs no secret of its own: each pod presents a projected service-account token
+that names the node it runs on, and the server verifies it against the cluster's
+public keys.
 
 ## Status
 
