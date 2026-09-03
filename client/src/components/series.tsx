@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { formatTimestamp } from '@/lib/format';
+import { formatAxisTime, formatTimestamp, niceCeiling } from '@/lib/format';
 
 export interface SeriesValue {
   at: number;
@@ -16,6 +16,9 @@ export interface SeriesValue {
  * sample — an unreachable kubelet, a counter reset — breaks the line rather than
  * being interpolated across, because a smooth line through a hole is a lie about
  * what was measured.
+ *
+ * The axes are HTML rather than SVG text. The plot stretches to whatever width
+ * it is given, and text inside a stretched viewBox stretches with it.
  */
 export function Series({
   title,
@@ -49,8 +52,7 @@ export function Series({
   const span = Math.max(1, maxAt - minAt);
 
   const values = usable.map((point) => point.value as number);
-  const maxValue = Math.max(...values);
-  const ceiling = maxValue === 0 ? 1 : maxValue * 1.1;
+  const ceiling = niceCeiling(Math.max(...values));
 
   const x = (at: number): number => ((at - minAt) / span) * width;
   const y = (value: number): number => height - (value / ceiling) * height;
@@ -68,70 +70,107 @@ export function Series({
   }
   if (current.length > 1) segments.push(current.join(' '));
 
+  const shown = hover ?? latest;
+
   return (
     <figure className="rounded-lg border border-line bg-card p-4">
       <Header
         title={title}
-        reading={format(hover ? hover.value : (latest?.value ?? null))}
+        reading={format(shown?.value ?? null)}
         when={hover ? formatTimestamp(hover.at) : undefined}
       />
 
-      <svg
-        role="img"
-        aria-label={`${title} over time`}
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        className="mt-3 h-[120px] w-full"
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(event) => {
-          const box = event.currentTarget.getBoundingClientRect();
-          const ratio = (event.clientX - box.left) / box.width;
-          const at = minAt + ratio * span;
-          const nearest = points.reduce((best, point) =>
-            Math.abs(point.at - at) < Math.abs(best.at - at) ? point : best,
-          );
-          setHover(nearest);
-        }}
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--signal)" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="var(--signal)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
+      <div className="mt-3 flex gap-2">
+        <div
+          className="flex w-14 shrink-0 flex-col justify-between text-right font-mono text-[10px] text-muted-foreground"
+          style={{ height }}
+        >
+          <span>{format(ceiling)}</span>
+          <span>{format(ceiling / 2)}</span>
+          <span>{format(0)}</span>
+        </div>
 
-        {segments.map((segment) => (
-          <path
-            key={segment.slice(0, 24)}
-            d={`${segment} L${width},${height} L0,${height} Z`}
-            fill={`url(#${gradientId})`}
-            stroke="none"
-          />
-        ))}
+        <svg
+          role="img"
+          aria-label={`${title} over time`}
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          className="w-full"
+          style={{ height }}
+          onMouseLeave={() => setHover(null)}
+          onMouseMove={(event) => {
+            const box = event.currentTarget.getBoundingClientRect();
+            const ratio = (event.clientX - box.left) / box.width;
+            const at = minAt + ratio * span;
+            const nearest = points.reduce((best, point) =>
+              Math.abs(point.at - at) < Math.abs(best.at - at) ? point : best,
+            );
+            setHover(nearest);
+          }}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--signal)" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="var(--signal)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-        {segments.map((segment) => (
-          <path
-            key={`line-${segment.slice(0, 24)}`}
-            d={segment}
-            fill="none"
-            stroke="var(--signal)"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
+          {/* One line per y label, so a value can be read off the chart. */}
+          {[0, height / 2, height].map((at) => (
+            <line
+              key={at}
+              x1={0}
+              x2={width}
+              y1={at}
+              y2={at}
+              stroke="var(--line)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
 
-        {hover?.value !== null && hover !== null && (
-          <line
-            x1={x(hover.at)}
-            x2={x(hover.at)}
-            y1={0}
-            y2={height}
-            stroke="var(--muted-ink)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
-      </svg>
+          {segments.map((segment) => (
+            <path
+              key={segment.slice(0, 24)}
+              d={`${segment} L${width},${height} L0,${height} Z`}
+              fill={`url(#${gradientId})`}
+              stroke="none"
+            />
+          ))}
+
+          {segments.map((segment) => (
+            <path
+              key={`line-${segment.slice(0, 24)}`}
+              d={segment}
+              fill="none"
+              stroke="var(--signal)"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+
+          {hover?.value != null && (
+            <>
+              <line
+                x1={x(hover.at)}
+                x2={x(hover.at)}
+                y1={0}
+                y2={height}
+                stroke="var(--muted-ink)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+              <circle cx={x(hover.at)} cy={y(hover.value)} r={3} fill="var(--signal)" />
+            </>
+          )}
+        </svg>
+      </div>
+
+      <div className="ml-16 mt-1.5 flex justify-between font-mono text-[10px] text-muted-foreground">
+        <span>{formatAxisTime(minAt, span)}</span>
+        <span>{formatAxisTime(minAt + span / 2, span)}</span>
+        <span>{formatAxisTime(maxAt, span)}</span>
+      </div>
     </figure>
   );
 }
