@@ -1,13 +1,12 @@
 import { expect, it } from 'vitest';
-import { describeEachDialect } from '../test/db-harness.js';
+import { describeEachDialect, listOwnTables } from '../test/db-harness.js';
 import { migrateToLatest } from './migrate.js';
 
 describeEachDialect('migrateToLatest', (ctx) => {
   it('creates the settings table', async () => {
     await migrateToLatest(ctx.db, ctx.kind);
 
-    const tables = await ctx.db.introspection.getTables();
-    expect(tables.map((t) => t.name)).toContain('settings');
+    expect(await listOwnTables(ctx)).toContain('settings');
   });
 
   it('is idempotent', async () => {

@@ -11,6 +11,11 @@ export interface DbConfig {
   sqlitePath?: string;
   /** Required when kind is 'postgres'. */
   postgresUrl?: string;
+  /**
+   * Optional PostgreSQL schema to resolve unqualified names against. Tests use
+   * it to give each suite the isolation a private SQLite file gives for free.
+   */
+  postgresSchema?: string;
 }
 
 export function createDb(config: DbConfig): Kysely<Database> {
@@ -22,11 +27,22 @@ export function createDb(config: DbConfig): Kysely<Database> {
   }
 
   if (!config.postgresUrl) throw new Error('postgresUrl is required for the postgres dialect');
+
+  if (config.postgresSchema && !/^[a-z_][a-z0-9_]*$/.test(config.postgresSchema)) {
+    // The schema name reaches the server as a startup option rather than a
+    // bound parameter, so it is validated instead of escaped.
+    throw new Error(`Invalid postgresSchema: ${config.postgresSchema}`);
+  }
+
   return new Kysely<Database>({
     dialect: new PostgresDialect({
       // One connection pool, kept small: kubitor runs a single replica and
       // predictable memory matters more than throughput here.
-      pool: new pg.Pool({ connectionString: config.postgresUrl, max: 4 }),
+      pool: new pg.Pool({
+        connectionString: config.postgresUrl,
+        max: 4,
+        ...(config.postgresSchema ? { options: `-c search_path=${config.postgresSchema}` } : {}),
+      }),
     }),
   });
 }
