@@ -13,11 +13,17 @@ import { AccountEventsRepo } from '../db/account-events.repo.js';
 import { AccountsRepo } from '../db/accounts.repo.js';
 import { createDb } from '../db/connect.js';
 import { SQLITE_SQL } from '../db/dialect.js';
+import { IntegrationStateRepo } from '../db/integration-state.repo.js';
 import { LoginAttemptsRepo } from '../db/login-attempts.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
 import type { Database } from '../db/schema.js';
 import { SessionsRepo } from '../db/sessions.repo.js';
 import { HealthService } from '../health.service.js';
+import { CapabilitiesService } from '../plugins/capabilities.service.js';
+import type { IntegrationModule } from '../plugins/contract.js';
+import { DetectionService } from '../plugins/detection.service.js';
+import { IntegrationRegistry } from '../plugins/registry.js';
+import { type FakeClusterState, fakeProbes } from './fake-probes.js';
 
 export interface TestApp {
   app: INestApplication;
@@ -26,6 +32,8 @@ export interface TestApp {
   sessions: SessionsRepo;
   auth: AuthService;
   accountsService: AccountsService;
+  capabilities: CapabilitiesService;
+  detection: DetectionService;
   config: Config;
   close(): Promise<void>;
 }
@@ -37,7 +45,14 @@ export const TEST_PASSWORD = 'a-good-test-password';
  * repositories. HTTP behaviour is what these tests are for, so the only thing
  * shortened is the anti-enumeration delay.
  */
-export async function createTestApp(overrides: Partial<Config> = {}): Promise<TestApp> {
+export interface TestAppOptions {
+  config?: Partial<Config>;
+  integrations?: readonly IntegrationModule[];
+  cluster?: FakeClusterState;
+}
+
+export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
+  const overrides = options.config ?? {};
   const directory = mkdtempSync(join(process.cwd(), '.tmptest', 'app-'));
   const db = createDb({ kind: 'sqlite', sqlitePath: join(directory, 'test.db') });
   await migrateToLatest(db, 'sqlite');
@@ -65,6 +80,21 @@ export async function createTestApp(overrides: Partial<Config> = {}): Promise<Te
   });
   const accountsService = new AccountsService({ accounts, sessions, events });
 
+  const registry = new IntegrationRegistry([...(options.integrations ?? [])]);
+  const states = new IntegrationStateRepo(db, SQLITE_SQL);
+  const detection = new DetectionService({
+    registry,
+    states,
+    probes: fakeProbes(options.cluster ?? {}),
+  });
+  const capabilities = new CapabilitiesService({
+    registry,
+    states,
+    detection,
+    clusterFacts: async () => ({ version: 'v1.36.3', nodes: 4 }),
+    agentStatus: async () => ({ installed: false, reporting: 0, expected: 4, stale: [] }),
+  });
+
   const moduleRef = await Test.createTestingModule({
     imports: [
       createAppModule({
@@ -72,6 +102,7 @@ export async function createTestApp(overrides: Partial<Config> = {}): Promise<Te
         health: new HealthService(db),
         auth,
         accounts: accountsService,
+        capabilities,
       }),
     ],
   }).compile();
@@ -86,6 +117,8 @@ export async function createTestApp(overrides: Partial<Config> = {}): Promise<Te
     sessions,
     auth,
     accountsService,
+    capabilities,
+    detection,
     config,
     async close() {
       await app.close();

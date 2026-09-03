@@ -22,9 +22,10 @@ beforeAll(async () => {
   const health = { databaseReachable: async () => reachable } as HealthService;
   const auth = {} as never;
   const accounts = {} as never;
+  const capabilities = {} as never;
 
   const moduleRef = await Test.createTestingModule({
-    imports: [createAppModule({ config, health, auth, accounts })],
+    imports: [createAppModule({ config, health, auth, accounts, capabilities })],
   }).compile();
 
   app = moduleRef.createNestApplication();

@@ -10,10 +10,16 @@ import { AccountEventsRepo } from './db/account-events.repo.js';
 import { AccountsRepo } from './db/accounts.repo.js';
 import { createDb } from './db/connect.js';
 import { sqlFor } from './db/dialect.js';
+import { IntegrationStateRepo } from './db/integration-state.repo.js';
 import { LoginAttemptsRepo } from './db/login-attempts.repo.js';
 import { migrateToLatest } from './db/migrate.js';
 import { SessionsRepo } from './db/sessions.repo.js';
 import { HealthService } from './health.service.js';
+import { CapabilitiesService } from './plugins/capabilities.service.js';
+import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
+import { INTEGRATIONS } from './plugins/index.js';
+import { unavailableProbes } from './plugins/probes/unavailable.js';
+import { IntegrationRegistry } from './plugins/registry.js';
 
 const BOOTSTRAP_USERNAME = 'admin';
 
@@ -57,8 +63,30 @@ async function bootstrap(): Promise<void> {
     logger.log(`Created the initial "${BOOTSTRAP_USERNAME}" account.`);
   }
 
+  const registry = new IntegrationRegistry(INTEGRATIONS);
+  const detection = new DetectionService({
+    registry,
+    states: new IntegrationStateRepo(db, dialect),
+    probes: unavailableProbes(),
+  });
+  const capabilities = new CapabilitiesService({
+    registry,
+    states: new IntegrationStateRepo(db, dialect),
+    detection,
+    clusterFacts: async () => ({ version: 'unknown', nodes: 0 }),
+    agentStatus: async () => ({ installed: false, reporting: 0, expected: 0, stale: [] }),
+  });
+
+  await detection.runOnce(Date.now());
+  const detectionTimer = setInterval(() => {
+    void detection.runOnce(Date.now()).catch((error: unknown) => {
+      logger.error(`Detection sweep failed: ${String(error)}`);
+    });
+  }, DETECTION_INTERVAL_MS);
+  detectionTimer.unref();
+
   const app = await NestFactory.create<NestExpressApplication>(
-    createAppModule({ config, health: new HealthService(db), auth, accounts }),
+    createAppModule({ config, health: new HealthService(db), auth, accounts, capabilities }),
   );
 
   // The ingress terminates TLS and sets the forwarded headers we read.
@@ -66,6 +94,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const shutdown = async (): Promise<void> => {
+    clearInterval(detectionTimer);
     await app.close();
     await db.destroy();
   };

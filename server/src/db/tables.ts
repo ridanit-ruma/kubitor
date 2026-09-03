@@ -29,6 +29,9 @@ export const TABLES: readonly TableSpec[] = [
   // Only needed long enough to enforce the lockout window.
   { name: 'login_attempts', kind: 'event', timeColumn: 'at', retentionMs: DAY_MS },
   { name: 'account_events', kind: 'event', timeColumn: 'at', retentionMs: 90 * DAY_MS },
+  { name: 'integration_state', kind: 'state' },
+  { name: 'facet_http_access', kind: 'event', timeColumn: 'at', retentionMs: 14 * DAY_MS },
+  { name: 'facet_http_routes', kind: 'state' },
 ];
 
 /** Kysely's own migration tables, which the registry does not govern. */
