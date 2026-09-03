@@ -15,18 +15,20 @@ export function ResourceCard({
   detail,
   aside,
   tone = 'signal',
+  className,
 }: {
   label: string;
-  /** Typically `used / total`. */
+  /** Typically `used / total`, or a percentage where that is the natural unit. */
   headline: string;
   percent?: number | null;
   detail?: string;
   /** A second line for whatever this resource specifically needs to say. */
   aside?: React.ReactNode;
   tone?: 'signal' | 'blind';
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col rounded-lg border border-line bg-card px-4 py-3">
+    <div className={cn('flex flex-col rounded-lg border border-line bg-card px-4 py-3', className)}>
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           {label}

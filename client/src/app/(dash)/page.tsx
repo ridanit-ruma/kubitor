@@ -12,13 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  formatBytes,
-  formatBytesPerSecond,
-  formatCpu,
-  formatMhz,
-  formatPercent,
-} from '@/lib/format';
+import { formatBytes, formatBytesPerSecond, formatMhz, formatPercent } from '@/lib/format';
 import { useLiveMetrics, useNow } from '@/lib/live';
 import { useManifest } from '@/lib/manifest-context';
 
@@ -34,7 +28,7 @@ export default function OverviewPage() {
     <div className="screen gap-4">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-lg font-semibold tracking-tight">Overview</h1>
-        <Age sampledAt={live.sampledAt} now={now} />
+        <Age sampledAt={freshest(live.nodes) ?? live.sampledAt} now={now} />
       </div>
 
       {manifest && <CapabilityStrip manifest={manifest} />}
@@ -124,15 +118,17 @@ export default function OverviewPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="text-right tabular">
-                    <Meter percent={node.cpuPercent} />
-                    <span className="ml-2 font-mono text-xs text-muted-foreground">
-                      {formatCpu(node.cpuMilli)}
-                    </span>
+                    {/*
+                      A share of the machine, not millicores against a capacity
+                      the reader has to remember. Where the agent reports, this
+                      is measured on the host once a second.
+                    */}
+                    <Meter percent={node.host?.cpuPercent ?? node.cpuPercent} />
                   </TableCell>
                   <TableCell className="hidden text-right tabular md:table-cell">
-                    <Meter percent={node.memoryPercent} />
+                    <Meter percent={node.host?.memPercent ?? node.memoryPercent} />
                     <span className="ml-2 font-mono text-xs text-muted-foreground">
-                      {formatBytes(node.memoryBytes)}
+                      {formatBytes(node.host?.memUsedBytes ?? node.memoryBytes)}
                     </span>
                   </TableCell>
                   <TableCell className="hidden text-right tabular lg:table-cell">
@@ -151,7 +147,11 @@ export default function OverviewPage() {
                     <br />↑ {formatBytesPerSecond(node.netTxBytesPerSecond)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Age sampledAt={node.sampledAt} now={now} className="justify-end" />
+                    <Age
+                      sampledAt={node.host?.sampledAt ?? node.sampledAt}
+                      now={now}
+                      className="justify-end"
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -179,6 +179,17 @@ function Meter({ percent }: { percent: number | null }) {
       <span className="font-mono text-xs">{formatPercent(percent, 0)}</span>
     </span>
   );
+}
+
+/** The newest reading on screen, whichever source produced it. */
+function freshest(
+  nodes: readonly { sampledAt: number; host?: { sampledAt: number } }[],
+): number | null {
+  const times = nodes.flatMap((node) => [
+    node.sampledAt,
+    ...(node.host ? [node.host.sampledAt] : []),
+  ]);
+  return times.length === 0 ? null : Math.max(...times);
 }
 
 function sum(values: readonly (number | null)[]): number | null {

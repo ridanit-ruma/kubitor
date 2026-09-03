@@ -128,6 +128,7 @@ export interface LiveNodeMetrics {
 /** What the agent adds: the host as the kernel sees it, once a second. */
 export interface LiveHostMetrics {
   sampledAt: number;
+  cpuPercent: number | null;
   cpuMhzAverage: number | null;
   cpuMhzMax: number | null;
   cpuCores: number | null;
@@ -148,9 +149,13 @@ export interface GpuInfo {
   pciId: string | null;
   mhzCur: number | null;
   mhzMax: number | null;
+  memMhzCur: number | null;
+  memMhzMax: number | null;
   busyPercent: number | null;
   memTotalBytes: number | null;
   memUsedBytes: number | null;
+  /** True when the GPU has no memory of its own and uses system RAM. */
+  memShared: boolean;
 }
 
 export interface DiskInfo {
@@ -166,6 +171,7 @@ export interface HostResourcesRow extends Record<string, unknown> {
   node: string;
   cpu_model: string | null;
   cpu_cores: number | null;
+  cpu_percent: number | null;
   cpu_mhz_avg: number | null;
   cpu_mhz_max: number | null;
   load1: number | null;
