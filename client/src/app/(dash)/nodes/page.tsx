@@ -73,7 +73,7 @@ const columns: Column<NodeRow>[] = [
 
 export default function NodesPage() {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="screen gap-3">
       <h1 className="text-lg font-semibold tracking-tight">Nodes</h1>
       <FacetTable<NodeRow>
         facet="nodes"

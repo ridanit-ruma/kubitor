@@ -51,8 +51,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <ManifestContext.Provider value={{ manifest, refresh: load }}>
         <SidebarProvider>
           <AppSidebar manifest={manifest} />
-          <SidebarInset className="flex h-screen flex-col overflow-hidden">
-            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-3">
+          <SidebarInset className="flex min-h-[100dvh] flex-col md:h-[100dvh] md:overflow-hidden">
+            <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-line bg-background px-3 md:static">
               <SidebarTrigger />
               <CommandPalette manifest={manifest} />
               <div className="ml-auto flex items-center gap-3">
@@ -68,8 +68,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </header>
 
-            {/* The page never scrolls; whatever is inside it does. */}
-            <main className="min-h-0 flex-1 overflow-hidden p-4">{ready ? children : null}</main>
+            {/*
+             * From `md` up the page is pinned and its panes scroll. Below that
+             * the page scrolls itself — see the `pane` utility.
+             */}
+            <main className="flex-1 p-4 md:min-h-0 md:overflow-hidden">
+              {ready ? children : null}
+            </main>
           </SidebarInset>
         </SidebarProvider>
       </ManifestContext.Provider>

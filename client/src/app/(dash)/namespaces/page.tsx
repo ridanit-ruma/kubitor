@@ -54,10 +54,10 @@ export default function NamespacesPage() {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="screen gap-3">
       <h1 className="text-lg font-semibold tracking-tight">Namespaces</h1>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line">
+      <div className="pane rounded-lg border border-line">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>

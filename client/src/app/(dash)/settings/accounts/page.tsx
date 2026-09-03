@@ -46,7 +46,7 @@ export default function AccountsPage() {
   }, [load]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="screen gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="ghost" size="sm">
           <Link href="/settings">
@@ -66,7 +66,7 @@ export default function AccountsPage() {
         mint a way in. Keep a second account: losing the only one means losing the dashboard.
       </p>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line">
+      <div className="pane rounded-lg border border-line">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>

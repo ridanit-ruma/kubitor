@@ -48,7 +48,7 @@ export default function IntegrationsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="screen gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold tracking-tight">Integrations</h1>
         <Link

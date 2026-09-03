@@ -56,7 +56,7 @@ const columns: Column<EventRow>[] = [
 
 export default function EventsPage() {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="screen gap-3">
       <h1 className="text-lg font-semibold tracking-tight">Events</h1>
       <FacetTable<EventRow>
         facet="events"

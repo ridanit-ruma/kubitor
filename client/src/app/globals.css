@@ -141,11 +141,26 @@
     border-color: var(--border);
   }
 
+  /*
+   * Pinning the viewport is a desktop contract, not a universal one.
+   *
+   * On a laptop a list screen should fit and only its table should scroll. On a
+   * phone the same rule strands the page: the header and filters occupy most of
+   * the viewport, an inner box scrolls on its own inside what is left, and the
+   * page itself cannot move at all. So the pinning starts at `md` and below it
+   * the page scrolls the way every other page on a phone does.
+   */
   html,
   body {
-    /* List screens fit the viewport; only their tables scroll. */
-    height: 100%;
-    overflow: hidden;
+    min-height: 100%;
+  }
+
+  @media (width >= 48rem) {
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
   }
 
   body {
@@ -164,6 +179,34 @@
   :focus-visible {
     outline: 2px solid var(--signal);
     outline-offset: 2px;
+  }
+}
+
+/*
+ * A region that scrolls inside a pinned layout, and simply flows below it.
+ *
+ * Tables, chart grids and long lists all need the same behaviour, and writing
+ * it as breakpoint utilities at every call site is how one screen ends up
+ * scrolling differently from the next.
+ */
+@utility pane {
+  overflow: visible;
+
+  @media (width >= 48rem) {
+    min-height: 0;
+    flex: 1 1 0%;
+    overflow-y: auto;
+  }
+}
+
+/* The screen's own root: flows on a phone, fills the frame from `md` up. */
+@utility screen {
+  display: flex;
+  flex-direction: column;
+
+  @media (width >= 48rem) {
+    height: 100%;
+    min-height: 0;
   }
 }
 

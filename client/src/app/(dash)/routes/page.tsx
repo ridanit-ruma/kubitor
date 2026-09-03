@@ -72,7 +72,7 @@ const columns: Column<RouteRow>[] = [
 
 export default function RoutesPage() {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="screen gap-3">
       <h1 className="text-lg font-semibold tracking-tight">Routes</h1>
       <FacetTable<RouteRow>
         facet="routes"
