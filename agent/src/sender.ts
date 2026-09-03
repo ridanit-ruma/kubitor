@@ -20,9 +20,18 @@ export function decideRetry(status: number | null): SendResult {
   return { advance: true, status };
 }
 
+/**
+ * How the sender obtains its credential.
+ *
+ * A function rather than a string because a projected service-account token is
+ * rotated on disk by the kubelet; an agent that read it once would start
+ * failing with 401s some hours after it started.
+ */
+export type TokenSource = string | (() => Promise<string | null>);
+
 export interface SenderOptions {
   endpoint: string;
-  token: string;
+  token: TokenSource;
   /** Rows kept while the server is unreachable, oldest dropped first. */
   maxBuffered: number;
   fetchImpl?: typeof fetch;
@@ -48,18 +57,28 @@ export class Sender {
     return this.#buffer.length;
   }
 
+  async #token(): Promise<string | null> {
+    const source = this.#options.token;
+    return typeof source === 'string' ? source : await source();
+  }
+
   async flush(): Promise<SendResult> {
     if (this.#buffer.length === 0) return { advance: true, status: null };
 
     const rows = [...this.#buffer];
     let status: number | null = null;
 
+    const token = await this.#token();
+    // No credential is a condition that resolves itself once the token is
+    // mounted, so the rows are held rather than dropped.
+    if (token === null) return { advance: false, status: null };
+
     try {
       const response = await this.#fetch(this.#options.endpoint, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${this.#options.token}`,
+          authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ rows }),
       });
