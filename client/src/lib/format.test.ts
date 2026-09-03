@@ -7,6 +7,7 @@ import {
   formatCpu,
   formatDuration,
   formatPercent,
+  niceCeiling,
 } from './format';
 
 const NOW = 1_756_800_000_000;
@@ -62,15 +63,25 @@ describe('formatPercent', () => {
 
 describe('formatAge', () => {
   /**
-   * The dashboard refreshes every second; the reading underneath may not have.
-   * Saying so is what separates a live display from a convincing one.
+   * The label must hold still while a reading is fresh. Counting seconds
+   * rewrote it on every tick, and text moving in the corner of the eye reads as
+   * a fault rather than as freshness.
    */
-  it('counts seconds, minutes, hours and days', () => {
-    expect(formatAge(NOW, NOW)).toBe('just now');
-    expect(formatAge(NOW - 12_000, NOW)).toBe('12s ago');
-    expect(formatAge(NOW - 5 * 60_000, NOW)).toBe('5m ago');
-    expect(formatAge(NOW - 3 * 3_600_000, NOW)).toBe('3h ago');
-    expect(formatAge(NOW - 2 * 86_400_000, NOW)).toBe('2d ago');
+  it('says nothing new for the whole first minute', () => {
+    expect(formatAge(NOW, NOW)).toBe('current');
+    expect(formatAge(NOW - 1000, NOW)).toBe('current');
+    expect(formatAge(NOW - 12_000, NOW)).toBe('current');
+    expect(formatAge(NOW - 59_000, NOW)).toBe('current');
+  });
+
+  it('reports staleness in minutes, hours and days', () => {
+    expect(formatAge(NOW - 5 * 60_000, NOW)).toBe('5m old');
+    expect(formatAge(NOW - 3 * 3_600_000, NOW)).toBe('3h old');
+    expect(formatAge(NOW - 2 * 86_400_000, NOW)).toBe('2d old');
+  });
+
+  it('rounds down, so a reading is never reported younger than it is', () => {
+    expect(formatAge(NOW - 119_000, NOW)).toBe('1m old');
   });
 
   it('says so when there is nothing to age', () => {
@@ -78,7 +89,7 @@ describe('formatAge', () => {
   });
 
   it('never reports a negative age from a clock skew', () => {
-    expect(formatAge(NOW + 5000, NOW)).toBe('just now');
+    expect(formatAge(NOW + 5000, NOW)).toBe('current');
   });
 });
 
@@ -92,5 +103,28 @@ describe('formatCelsius and formatDuration', () => {
     expect(formatDuration(6)).toBe('6 ms');
     expect(formatDuration(1500)).toBe('1.50 s');
     expect(formatDuration(null)).toBe('—');
+  });
+});
+
+describe('niceCeiling', () => {
+  /**
+   * An axis label is only useful if it is a number a reader recognizes. The
+   * peak plus ten percent produces 1.37 GiB, which is nobody's landmark.
+   */
+  it('rounds up to a landmark', () => {
+    expect(niceCeiling(0.8)).toBe(1);
+    expect(niceCeiling(1.2)).toBe(2);
+    expect(niceCeiling(2.4)).toBe(2.5);
+    expect(niceCeiling(37)).toBe(50);
+    expect(niceCeiling(640)).toBe(1000);
+  });
+
+  it('leaves a value that is already a landmark alone', () => {
+    expect(niceCeiling(100)).toBe(100);
+  });
+
+  it('gives an empty chart a usable axis', () => {
+    expect(niceCeiling(0)).toBe(1);
+    expect(niceCeiling(Number.NaN)).toBe(1);
   });
 });

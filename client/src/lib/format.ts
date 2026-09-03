@@ -39,26 +39,27 @@ export function formatCelsius(value: number | null | undefined): string {
 }
 
 /**
- * How old a reading is, in words.
+ * How old a reading is, in words that hold still.
  *
- * This is the counterweight to a one-second refresh: the dashboard moves every
- * second, but the number underneath may be fifteen seconds old, and saying so is
- * the difference between a live display and a convincing one.
+ * Deliberately coarse under a minute. A label that counted seconds rewrote
+ * itself on every tick, and text flickering in the corner of the eye reads as
+ * something being wrong rather than as something being fresh. Freshness is the
+ * indicator's job; this text is for when a reading has stopped being fresh, and
+ * the exact instant is always one hover away.
  */
 export function formatAge(sampledAt: number | null | undefined, now: number): string {
   if (sampledAt === null || sampledAt === undefined) return 'no data';
 
   const seconds = Math.max(0, Math.round((now - sampledAt) / 1000));
-  if (seconds < 1) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 60) return 'current';
 
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m old`;
 
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h old`;
 
-  return `${Math.round(hours / 24)}d ago`;
+  return `${Math.floor(hours / 24)}d old`;
 }
 
 /** A wall-clock timestamp, in the viewer's own zone. */
@@ -107,4 +108,52 @@ export function formatOfTotal(
   if (used === null || used === undefined) return '—';
   if (total === null || total === undefined) return formatBytes(used);
   return `${formatBytes(used)} / ${formatBytes(total)}`;
+}
+
+/**
+ * A time-axis label, scaled to the window it sits in.
+ *
+ * A five-minute chart needs seconds to distinguish its ticks; a seven-day chart
+ * needs the date and nothing finer. Printing the same precision at both ends
+ * makes one axis unreadable and the other repetitive.
+ */
+export function formatAxisTime(at: number, spanMs: number): string {
+  const when = new Date(at);
+
+  if (spanMs <= 15 * 60_000) {
+    return when.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }
+
+  if (spanMs <= 36 * 3_600_000) {
+    return when.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  return when.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+}
+
+/**
+ * A chart's top gridline, at a number worth printing.
+ *
+ * A ceiling of "the peak plus ten percent" puts labels like 1.37 GiB on the
+ * axis — a number nobody is looking for. Rounding up to 1, 2, 2.5 or 5 times a
+ * power of ten gives an axis whose labels are landmarks.
+ */
+export function niceCeiling(peak: number): number {
+  if (!Number.isFinite(peak) || peak <= 0) return 1;
+
+  const magnitude = 10 ** Math.floor(Math.log10(peak));
+  for (const step of [1, 2, 2.5, 5, 10]) {
+    const candidate = step * magnitude;
+    if (candidate >= peak) return candidate;
+  }
+  return 10 * magnitude;
 }

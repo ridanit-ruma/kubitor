@@ -6,10 +6,10 @@ import { cn } from '@/lib/utils';
 /**
  * How old the number beside it actually is.
  *
- * kubitor pushes once a second but samples every fifteen, so a value can move
- * smoothly while being a quarter-minute old. The dot goes amber once a reading
- * is older than the interface implies, which is the difference between a live
- * display and a merely convincing one.
+ * A value can move smoothly while being a quarter-minute old, so the dot
+ * carries freshness and the text carries staleness. The text is coarse on
+ * purpose: a second-by-second countdown redraws itself constantly, and constant
+ * movement in the corner of the eye is a distraction rather than information.
  */
 export function Age({
   sampledAt,
