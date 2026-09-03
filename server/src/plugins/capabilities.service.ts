@@ -33,14 +33,6 @@ export const CORE_NAV: readonly NavEntry[] = [
     requiresFacet: 'http.routes',
     order: 1,
   },
-  {
-    id: 'hardware',
-    title: 'Hardware',
-    category: 'hosts',
-    href: '/hardware',
-    requiresFacet: 'host.resources',
-    order: 0,
-  },
   { id: 'integrations', title: 'Integrations', category: 'settings', href: '/settings', order: 0 },
   {
     id: 'accounts',

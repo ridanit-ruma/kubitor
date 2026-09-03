@@ -24,6 +24,7 @@ import { SessionsRepo } from './db/sessions.repo.js';
 import { TABLES } from './db/tables.js';
 import { HealthService } from './health.service.js';
 import { LiveGateway } from './http/ws.gateway.js';
+import { hostAgentIntegration } from './integrations/host-agent/index.js';
 import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
@@ -130,6 +131,12 @@ async function bootstrap(): Promise<void> {
     logger.warn('No service-account namespace on disk; agents must use static tokens.');
   }
 
+  let nodeCount = 0;
+  const hostAgent = hostAgentIntegration({
+    reporting: () => liveCache.reportingHosts(Date.now()),
+    expected: () => nodeCount,
+  });
+
   const persistedAt = new Map<string, number>();
   const modules = kube
     ? [
@@ -143,9 +150,10 @@ async function bootstrap(): Promise<void> {
           await samples.record(sample);
         }),
         traefikIntegration(kube),
+        hostAgent,
         ...INTEGRATIONS,
       ]
-    : INTEGRATIONS;
+    : [hostAgent, ...INTEGRATIONS];
 
   const probes = kube ? clusterProbes(kube) : unavailableProbes();
   const registry = new IntegrationRegistry(modules);
@@ -183,14 +191,6 @@ async function bootstrap(): Promise<void> {
     },
   });
 
-  await detection.runOnce(Date.now());
-  const detectionTimer = setInterval(() => {
-    void detection.runOnce(Date.now()).catch((error: unknown) => {
-      logger.error(`Detection sweep failed: ${String(error)}`);
-    });
-  }, DETECTION_INTERVAL_MS);
-  detectionTimer.unref();
-
   const scheduler = new CollectorScheduler({
     pipeline,
     probes,
@@ -200,15 +200,40 @@ async function bootstrap(): Promise<void> {
   });
   scheduler.start(modules);
 
-  // Capacity is what turns a raw gauge into a percentage.
-  if (kube) {
-    for (const node of await kube.listNodes()) {
+  /**
+   * Capacity is what turns a raw gauge into a percentage, and the node count is
+   * what makes partial agent coverage visible.
+   *
+   * Refreshed rather than read once at boot: a node joining the cluster an hour
+   * later would otherwise have no capacity, and every percentage for it would
+   * read as unknown for as long as the pod lived.
+   */
+  const refreshNodeFacts = async (): Promise<void> => {
+    if (!kube) return;
+
+    const nodes = await kube.listNodes();
+    nodeCount = nodes.length;
+    for (const node of nodes) {
       liveCache.setCapacity(node.name, {
         cpuMilli: node.capacityCpuMilli,
         memoryBytes: node.capacityMemoryBytes,
       });
     }
-  }
+  };
+
+  await refreshNodeFacts();
+
+  // Detection reads the node count above, so the first sweep runs after it.
+  await detection.runOnce(Date.now());
+
+  const detectionTimer = setInterval(() => {
+    void refreshNodeFacts()
+      .then(() => detection.runOnce(Date.now()))
+      .catch((error: unknown) => {
+        logger.error(`Detection sweep failed: ${String(error)}`);
+      });
+  }, DETECTION_INTERVAL_MS);
+  detectionTimer.unref();
 
   const retentionTimer = setInterval(() => {
     void sweepRetention(db, TABLES, Date.now()).catch((error: unknown) => {
