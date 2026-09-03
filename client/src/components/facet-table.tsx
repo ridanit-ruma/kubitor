@@ -1,8 +1,8 @@
 'use client';
 
-import { Download } from 'lucide-react';
+import { Download, EyeOff, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,6 +22,16 @@ import {
 } from '@/components/ui/table';
 import { api, exportHref } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+/** The screen's own constraints, applied on top of whatever the reader chose. */
+function withFixed(
+  search: string,
+  fixed: Readonly<Record<string, string>> | undefined,
+): URLSearchParams {
+  const params = new URLSearchParams(search);
+  for (const [key, value] of Object.entries(fixed ?? {})) params.set(key, value);
+  return params;
+}
 
 /**
  * How important a column is.
@@ -57,13 +67,40 @@ interface FacetTableProps<Row> {
   facet: string;
   columns: readonly Column<Row>[];
   filters?: readonly FilterOption[];
+  /**
+   * Filters the screen always applies and the reader cannot change.
+   *
+   * A vendor's own screen is the case: it is about that vendor's rows and
+   * nothing else, and the constraint belongs to the screen rather than to a
+   * dropdown the reader has to remember to set.
+   */
+  fixed?: Readonly<Record<string, string>>;
   searchPlaceholder: string;
   emptyMessage: string;
   onRowHref?(row: Row): string | undefined;
   /** A stable identity for the row; falls back to its whole content. */
   rowKey?(row: Row): string;
   pageSize?: number;
+  /** Offers the exclusion box. Worth it where most rows are noise. */
+  excludable?: boolean;
+  excludePlaceholder?: string;
+  /**
+   * An exclusion applied on first visit.
+   *
+   * Written into the URL rather than held privately, so the filter is visible,
+   * removable in one click, and carried into the export like every other one.
+   */
+  defaultExclude?: string;
 }
+
+/**
+ * How long a keystroke waits before it becomes a request.
+ *
+ * Without this, typing "traefik" is seven navigations, seven facet queries and
+ * seven RSC fetches — every one of them recorded in the cluster's own access
+ * log, which is the screen the user is usually typing into.
+ */
+const TYPING_SETTLE_MS = 250;
 
 /**
  * One table for every facet screen.
@@ -75,11 +112,15 @@ export function FacetTable<Row extends Record<string, unknown>>({
   facet,
   columns,
   filters = [],
+  fixed,
   searchPlaceholder,
   emptyMessage,
   onRowHref,
   rowKey,
   pageSize = 100,
+  excludable = false,
+  excludePlaceholder = 'Hide rows matching…',
+  defaultExclude,
 }: FacetTableProps<Row>) {
   const router = useRouter();
   const params = useSearchParams();
@@ -92,7 +133,8 @@ export function FacetTable<Row extends Record<string, unknown>>({
   // The query string is the single source of truth for what is shown, so the
   // effect below depends on it rather than on the router object.
   const search = params.toString();
-  const query = new URLSearchParams(search);
+  const fixedKey = JSON.stringify(fixed ?? {});
+  const query = withFixed(search, fixed);
   query.set('limit', String(pageSize));
 
   const setParam = (key: string, value: string | null): void => {
@@ -102,6 +144,40 @@ export function FacetTable<Row extends Record<string, unknown>>({
     router.replace(`?${next.toString()}`, { scroll: false });
   };
 
+  const settle = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const setParamWhenTypingStops = (key: string, value: string): void => {
+    const pending = settle.current.get(key);
+    if (pending) clearTimeout(pending);
+    settle.current.set(
+      key,
+      setTimeout(() => setParam(key, value), TYPING_SETTLE_MS),
+    );
+  };
+
+  useEffect(() => {
+    const timers = settle.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  const seededDefault = useRef(false);
+  const applied = params.toString();
+  useEffect(() => {
+    if (!defaultExclude || seededDefault.current) return;
+    seededDefault.current = true;
+
+    // Only on a bare URL: a link someone shared, or a view they have already
+    // filtered, must keep meaning exactly what it says.
+    const current = new URLSearchParams(applied);
+    if (current.has('exclude') || current.has('search')) return;
+
+    current.set('exclude', defaultExclude);
+    router.replace(`?${current.toString()}`, { scroll: false });
+  }, [defaultExclude, applied, router]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -109,7 +185,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
       setLoading(true);
       setFailed(false);
       try {
-        const request = new URLSearchParams(search);
+        const request = withFixed(search, JSON.parse(fixedKey) as Record<string, string>);
         request.set('limit', String(pageSize));
         const page = await api.facet(facet, request);
         if (cancelled) return;
@@ -125,17 +201,32 @@ export function FacetTable<Row extends Record<string, unknown>>({
     return () => {
       cancelled = true;
     };
-  }, [facet, search, pageSize]);
+  }, [facet, search, fixedKey, pageSize]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="screen gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          className="h-8 w-full max-w-xs"
-          placeholder={searchPlaceholder}
-          defaultValue={params.get('search') ?? ''}
-          onChange={(event) => setParam('search', event.target.value)}
-        />
+        <div className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-8 pl-8"
+            placeholder={searchPlaceholder}
+            defaultValue={params.get('search') ?? ''}
+            onChange={(event) => setParamWhenTypingStops('search', event.target.value)}
+          />
+        </div>
+
+        {excludable && (
+          <div className="relative w-full max-w-xs">
+            <EyeOff className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-blind" />
+            <Input
+              className="h-8 pl-8"
+              placeholder={excludePlaceholder}
+              defaultValue={params.get('exclude') ?? ''}
+              onChange={(event) => setParamWhenTypingStops('exclude', event.target.value)}
+            />
+          </div>
+        )}
 
         {filters.map((filter) => (
           <Select
@@ -177,7 +268,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
       </div>
 
       {/* Only this box scrolls, and only vertically. */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line">
+      <div className="pane rounded-lg border border-line">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>

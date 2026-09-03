@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { type Column, FacetTable } from '@/components/facet-table';
 import { Badge } from '@/components/ui/badge';
 import { formatBytes, formatDuration, formatTimestamp } from '@/lib/format';
@@ -83,14 +84,32 @@ const columns: Column<AccessRow>[] = [
 ];
 
 export default function HttpTrafficPage() {
+  /*
+   * kubitor's own dashboard is, by volume, the loudest thing on this screen —
+   * every poll, every page view and every export is a request the ingress logs.
+   * Hiding it by default is the difference between an access log and a mirror.
+   * The exclusion lands in the URL, so it is visible and one click from gone.
+   */
+  const [ownHost, setOwnHost] = useState<string | undefined>(undefined);
+  useEffect(() => setOwnHost(window.location.hostname), []);
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <h1 className="text-lg font-semibold tracking-tight">HTTP traffic</h1>
+    <div className="screen gap-3">
+      <div>
+        <h1 className="text-lg font-semibold tracking-tight">HTTP traffic</h1>
+        <p className="text-sm text-muted-foreground">
+          Requests as the ingress saw them. kubitor&rsquo;s own traffic is hidden by default — clear
+          the second box to include it.
+        </p>
+      </div>
       <FacetTable<AccessRow>
         facet="http-access"
         columns={columns}
         filters={[{ key: 'method', label: 'Methods', values: ['GET', 'POST', 'PUT', 'DELETE'] }]}
         searchPlaceholder="Find a request by path, host, client or router"
+        excludable
+        excludePlaceholder="Hide requests matching…"
+        {...(ownHost ? { defaultExclude: ownHost } : {})}
         emptyMessage="No request matches these filters."
       />
     </div>
