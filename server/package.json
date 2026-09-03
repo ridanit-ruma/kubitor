@@ -9,10 +9,21 @@
   },
   "dependencies": {
     "@kubitor/shared": "workspace:*",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "cookie": "^2.0.1",
+    "jose": "^6.2.10",
     "kysely": "^0.29.5",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@nestjs/testing": "^12.0.1",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2"
   }
 }

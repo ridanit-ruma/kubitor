@@ -1,5 +1,13 @@
 {
   "extends": "../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"] },
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    // Decorators only. No `emitDecoratorMetadata`: every provider is injected
+    // by an explicit token, so nothing reads `design:paramtypes` and the test
+    // runner needs no metadata transform.
+    "experimentalDecorators": true
+  },
   "include": ["src/**/*.ts"]
 }
