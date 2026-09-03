@@ -18,8 +18,14 @@ export interface KubeApi {
   listIngresses(): Promise<IngressInfo[]>;
   /** Rows from a namespaced custom resource, as plain JSON. */
   listCustomObjects(group: string, version: string, plural: string): Promise<unknown[]>;
-  /** Log lines a pod produced in the last `sinceSeconds`. */
-  podLogsSince(namespace: string, labelSelector: string, sinceSeconds: number): Promise<string[]>;
+  /**
+   * The tail of each matching pod's log, kept per pod.
+   *
+   * Deliberately a tail rather than a time window: `sinceSeconds` is accepted by
+   * the client and silently returns nothing, so a caller that trusted it would
+   * collect no logs at all while reporting no error.
+   */
+  podLogTails(namespace: string, labelSelector: string, tailLines: number): Promise<PodLogTail[]>;
 
   hasCrd(name: string): Promise<boolean>;
   workload(
@@ -86,6 +92,11 @@ export interface IngressInfo {
   className: string | null;
   tls: boolean;
   rules: IngressRule[];
+}
+
+export interface PodLogTail {
+  pod: string;
+  lines: string[];
 }
 
 export interface WorkloadRef {

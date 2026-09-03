@@ -16,6 +16,7 @@ import {
   type KubeApi,
   type NodeInfo,
   type PodInfo,
+  type PodLogTail,
   parseCpuToMilli,
   parseMemoryToBytes,
   type WorkloadRef,
@@ -166,28 +167,30 @@ export class KubeClient implements KubeApi {
     return Array.isArray(items) ? items : [];
   }
 
-  async podLogsSince(
+  async podLogTails(
     namespace: string,
     labelSelector: string,
-    sinceSeconds: number,
-  ): Promise<string[]> {
+    tailLines: number,
+  ): Promise<PodLogTail[]> {
     const pods = await guard(() => this.#core.listNamespacedPod({ namespace, labelSelector }));
 
-    const lines: string[] = [];
+    const tails: PodLogTail[] = [];
     for (const pod of pods?.items ?? []) {
       const name = pod.metadata?.name;
       if (!name) continue;
 
-      // Read a bounded window rather than holding a stream open. A stream that
-      // fails mid-flight looks identical to a quiet one, and a wedged stream
-      // silently stops the facet; a failed poll is a visible collector error.
+      // A bounded tail rather than a held-open stream: a stream that fails
+      // mid-flight is indistinguishable from a quiet one and silently stops the
+      // facet, whereas a failed poll is a visible collector error.
       const text = await optional(() =>
-        this.#core.readNamespacedPodLog({ namespace, name, sinceSeconds, timestamps: false }),
+        this.#core.readNamespacedPodLog({ namespace, name, tailLines, timestamps: false }),
       );
 
-      if (typeof text === 'string') lines.push(...text.split('\n'));
+      if (typeof text === 'string') {
+        tails.push({ pod: name, lines: text.split('\n').filter((line) => line.length > 0) });
+      }
     }
-    return lines;
+    return tails;
   }
 
   async hasCrd(name: string): Promise<boolean> {

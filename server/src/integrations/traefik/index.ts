@@ -6,12 +6,26 @@ const NAMESPACE_CANDIDATES = ['traefik', 'kube-system', 'traefik-system'];
 const ROUTES_INTERVAL_MS = 30_000;
 const ACCESS_INTERVAL_MS = 15_000;
 /**
- * Overlap the log window slightly so a poll that lands late does not leave a
- * gap. Duplicates are cheap; a missing request is not recoverable.
+ * How much of each replica's log to re-read every poll.
+ *
+ * Generous on purpose: the reader resumes from the last line it saw, so the
+ * only cost of a large tail is parsing, while too small a tail loses requests
+ * during a burst. At this size a replica can serve ~130 requests a second
+ * between polls before anything is missed.
  */
-const ACCESS_WINDOW_SECONDS = Math.ceil((ACCESS_INTERVAL_MS / 1000) * 1.5);
+const ACCESS_TAIL_LINES = 2000;
 
 export function traefikIntegration(api: KubeApi): IntegrationModule {
+  /*
+   * The last line already read from each replica.
+   *
+   * Resuming from a remembered line rather than a timestamp keeps two requests
+   * in the same millisecond, survives a restart without replaying the log, and
+   * does not depend on `sinceSeconds`, which the client accepts and silently
+   * ignores.
+   */
+  const lastLineByPod = new Map<string, string>();
+
   return {
     id: 'traefik',
     title: 'Traefik',
@@ -97,16 +111,21 @@ export function traefikIntegration(api: KubeApi): IntegrationModule {
             const rows: Record<string, unknown>[] = [];
 
             for (const namespace of NAMESPACE_CANDIDATES) {
-              const lines = await api.podLogsSince(
+              const tails = await api.podLogTails(
                 namespace,
                 'app.kubernetes.io/name=traefik',
-                ACCESS_WINDOW_SECONDS,
+                ACCESS_TAIL_LINES,
               );
-              if (lines.length === 0) continue;
+              if (tails.length === 0) continue;
 
-              for (const line of lines) {
-                const parsed = parseAccessLine(line);
-                if (parsed) rows.push(parsed as unknown as Record<string, unknown>);
+              for (const tail of tails) {
+                for (const line of unreadLines(tail.lines, lastLineByPod.get(tail.pod))) {
+                  const parsed = parseAccessLine(line);
+                  if (parsed) rows.push(parsed as unknown as Record<string, unknown>);
+                }
+
+                const newest = tail.lines.at(-1);
+                if (newest !== undefined) lastLineByPod.set(tail.pod, newest);
               }
               break;
             }
@@ -128,6 +147,21 @@ export function traefikIntegration(api: KubeApi): IntegrationModule {
       },
     ],
   };
+}
+
+/**
+ * Everything after the last line already read.
+ *
+ * The first poll of a replica yields nothing: the tail is history, and importing
+ * it would backdate thousands of requests on every restart. From then on, a line
+ * that has fallen out of the tail — a burst, or a rotated log — means the whole
+ * tail is taken, because re-reading a few requests is recoverable and skipping
+ * them is not.
+ */
+function unreadLines(lines: readonly string[], lastSeen: string | undefined): string[] {
+  if (lastSeen === undefined) return [];
+  const index = lines.lastIndexOf(lastSeen);
+  return index === -1 ? [...lines] : lines.slice(index + 1);
 }
 
 function fromIngress(ingress: IngressInfo, observedAt: number): Record<string, unknown>[] {

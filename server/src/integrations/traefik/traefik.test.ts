@@ -44,7 +44,7 @@ function fakeApi(overrides: Partial<KubeApi> = {}): KubeApi {
     nodeSummary: unused,
     listIngresses: async () => [ingress],
     listCustomObjects: async () => [ingressRoute],
-    podLogsSince: async () => [],
+    podLogTails: async () => [],
     hasCrd: async () => false,
     workload: async () => null,
     service: async () => false,
@@ -193,6 +193,17 @@ describe('traefik access collector', () => {
     StartUTC: '2026-09-03T04:18:47Z',
   });
 
+  const other = (path: string): string =>
+    JSON.stringify({
+      RequestHost: 'kubitor.myuyayam.dev',
+      RequestMethod: 'GET',
+      RequestPath: path,
+      DownstreamStatus: 200,
+      Duration: 1_000_000,
+      ClientHost: '10.0.0.1',
+      StartUTC: '2026-09-03T04:18:47Z',
+    });
+
   async function access(api: KubeApi): Promise<Record<string, unknown>[]> {
     const collector = traefikIntegration(api)
       .collectors()
@@ -203,18 +214,92 @@ describe('traefik access collector', () => {
     return emissions[0]?.rows as Record<string, unknown>[];
   }
 
-  it('turns log lines into requests', async () => {
-    const rows = await access(fakeApi({ podLogsSince: async () => [line, '', line] }));
-
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ host: 'kubitor.myuyayam.dev', status: 200 });
-  });
-
-  it('emits nothing when the log holds no requests', async () => {
+  /**
+   * The first poll is history: importing a tail on every restart would backdate
+   * thousands of requests that were already recorded.
+   */
+  it('reads nothing on the first poll of a replica', async () => {
     const rows = await access(
-      fakeApi({ podLogsSince: async () => ['level=info msg="Configuration loaded"'] }),
+      fakeApi({ podLogTails: async () => [{ pod: 'traefik-a', lines: [line, line] }] }),
     );
 
     expect(rows).toEqual([]);
+  });
+
+  it('reads only what arrived since the last poll', async () => {
+    let tail = [line, other('/first')];
+    const api = fakeApi({ podLogTails: async () => [{ pod: 'traefik-a', lines: tail }] });
+    const integration = traefikIntegration(api);
+    const collector = integration.collectors().find((c) => c.id === 'traefik-access');
+    if (collector?.kind !== 'poll') throw new Error('missing collector');
+
+    const run = async () => {
+      const emissions = await collector.run({ probes: fakeProbes(), now: () => NOW });
+      return emissions[0]?.rows as Record<string, unknown>[];
+    };
+
+    expect(await run()).toEqual([]);
+
+    tail = [line, other('/first'), other('/second'), other('/third')];
+    const second = await run();
+
+    expect(second.map((row) => row.path)).toEqual(['/second', '/third']);
+  });
+
+  /** A burst can push the remembered line out of the tail entirely. */
+  it('takes the whole tail when the last line it saw is gone', async () => {
+    let tail = [other('/a')];
+    const api = fakeApi({ podLogTails: async () => [{ pod: 'traefik-a', lines: tail }] });
+    const collector = traefikIntegration(api)
+      .collectors()
+      .find((c) => c.id === 'traefik-access');
+    if (collector?.kind !== 'poll') throw new Error('missing collector');
+
+    await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    tail = [other('/x'), other('/y')];
+    const emissions = await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    const paths = (emissions[0]?.rows ?? []).map((row) => (row as { path: string }).path);
+    expect(paths).toEqual(['/x', '/y']);
+  });
+
+  it('tracks each replica separately', async () => {
+    let tails = [
+      { pod: 'a', lines: [other('/a1')] },
+      { pod: 'b', lines: [other('/b1')] },
+    ];
+    const api = fakeApi({ podLogTails: async () => tails });
+    const collector = traefikIntegration(api)
+      .collectors()
+      .find((c) => c.id === 'traefik-access');
+    if (collector?.kind !== 'poll') throw new Error('missing collector');
+
+    await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    tails = [
+      { pod: 'a', lines: [other('/a1'), other('/a2')] },
+      { pod: 'b', lines: [other('/b1')] },
+    ];
+    const emissions = await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    const paths = (emissions[0]?.rows ?? []).map((row) => (row as { path: string }).path);
+    expect(paths).toEqual(['/a2']);
+  });
+
+  it('skips a line that is not a request', async () => {
+    let tail = [other('/seed')];
+    const api = fakeApi({ podLogTails: async () => [{ pod: 'a', lines: tail }] });
+    const collector = traefikIntegration(api)
+      .collectors()
+      .find((c) => c.id === 'traefik-access');
+    if (collector?.kind !== 'poll') throw new Error('missing collector');
+
+    await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    tail = [other('/seed'), 'level=info msg="Configuration loaded"'];
+    const emissions = await collector.run({ probes: fakeProbes(), now: () => NOW });
+
+    expect(emissions[0]?.rows).toEqual([]);
   });
 });
