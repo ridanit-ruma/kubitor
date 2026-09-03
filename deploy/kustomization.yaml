@@ -1,0 +1,26 @@
+# What Flux applies. A release is a bump of the image tags below, after CI is
+# green — never a `latest` that changes under a running pod.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kubitor
+
+resources:
+  - rbac.yaml
+  - pvc.yaml
+  - server.yaml
+  - client.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+# `commonLabels` would push this into the Deployment selector, which is
+# immutable; `includeSelectors: false` keeps it a label only.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: kubitor
+    includeSelectors: false
+
+images:
+  - name: ghcr.io/ridanit-ruma/kubitor-server
+    newTag: latest
+  - name: ghcr.io/ridanit-ruma/kubitor-client
+    newTag: latest

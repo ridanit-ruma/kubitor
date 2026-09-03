@@ -1,0 +1,47 @@
+name: Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # One failing image should not hide whether the others build.
+      fail-fast: false
+      matrix:
+        image: [server, client, agent]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image }}/Dockerfile
+          push: true
+          # `latest` moves, and a commit-pinned tag is what a release bumps to,
+          # so a running pod never changes underneath itself.
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/kubitor-${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/kubitor-${{ matrix.image }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

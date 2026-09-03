@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "mkdir -p .tmptest && vitest run"
+    "test": "mkdir -p .tmptest && vitest run",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@kubernetes/client-node": "^2.0.0",
@@ -30,5 +31,6 @@
     "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.1",
     "supertest": "^7.2.2"
-  }
+  },
+  "main": "./dist/main.js"
 }

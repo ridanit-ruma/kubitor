@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubitor-server
+  namespace: kubitor
+automountServiceAccountToken: true
+---
+# The union of every integration's declared `requiredRbac`, and nothing more.
+# Read-only throughout: kubitor observes a cluster, it never changes one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubitor-read
+rules:
+  # core: nodes, workloads, namespaces and events
+  - apiGroups: ['']
+    resources: [nodes, pods, namespaces, events, services, endpoints]
+    verbs: [get, list]
+  # core: kubelet /stats/summary, the metrics source that needs nothing installed
+  - apiGroups: ['']
+    resources: [nodes/proxy]
+    verbs: [get]
+  # traefik: access logs
+  - apiGroups: ['']
+    resources: [pods/log]
+    verbs: [get]
+  # detection: is this product deployed here?
+  - apiGroups: [apps]
+    resources: [deployments, daemonsets, statefulsets]
+    verbs: [get, list]
+  # traefik and future ingress integrations
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, ingressclasses]
+    verbs: [get, list]
+  - apiGroups: [traefik.io]
+    resources: [ingressroutes]
+    verbs: [list]
+  # detection: which custom resources exist, and what provisions storage
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubitor-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubitor-read
+subjects:
+  - kind: ServiceAccount
+    name: kubitor-server
+    namespace: kubitor

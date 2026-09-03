@@ -1,0 +1,44 @@
+# Only the ingress controller and the dashboard may reach the API. Without this
+# any pod in the cluster could hit /api/ingest and try tokens against it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubitor-server
+  namespace: kubitor
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kubitor
+      app.kubernetes.io/component: server
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kubitor
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubitor-client
+  namespace: kubitor
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kubitor
+      app.kubernetes.io/component: client
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 3000

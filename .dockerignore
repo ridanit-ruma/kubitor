@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.tmptest
+**/coverage
+docs
+CLAUDE.md
+.git
+*.db
+*.db-wal
+*.db-shm

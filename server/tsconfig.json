@@ -9,5 +9,6 @@
     // runner needs no metadata transform.
     "experimentalDecorators": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/test/**"]
 }
