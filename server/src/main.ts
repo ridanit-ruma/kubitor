@@ -1,24 +1,69 @@
 import 'reflect-metadata';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { createAppModule } from './app.module.js';
+import { AccountsService } from './auth/accounts.service.js';
+import { AuthService } from './auth/auth.service.js';
 import { loadConfig } from './config.js';
+import { AccountEventsRepo } from './db/account-events.repo.js';
+import { AccountsRepo } from './db/accounts.repo.js';
 import { createDb } from './db/connect.js';
+import { sqlFor } from './db/dialect.js';
+import { LoginAttemptsRepo } from './db/login-attempts.repo.js';
 import { migrateToLatest } from './db/migrate.js';
+import { SessionsRepo } from './db/sessions.repo.js';
 import { HealthService } from './health.service.js';
 
+const BOOTSTRAP_USERNAME = 'admin';
+
 async function bootstrap(): Promise<void> {
+  const logger = new Logger('kubitor');
   const config = loadConfig(process.env);
 
   const db = createDb(config.db);
   await migrateToLatest(db, config.db.kind);
 
+  const dialect = sqlFor(config.db.kind);
+  const accountsRepo = new AccountsRepo(db);
+  const sessionsRepo = new SessionsRepo(db);
+  const eventsRepo = new AccountEventsRepo(db, dialect);
+
+  const auth = new AuthService({
+    accounts: accountsRepo,
+    sessions: sessionsRepo,
+    attempts: new LoginAttemptsRepo(db),
+    events: eventsRepo,
+    sessionTtlMs: config.sessionTtlMs,
+  });
+  const accounts = new AccountsService({
+    accounts: accountsRepo,
+    sessions: sessionsRepo,
+    events: eventsRepo,
+  });
+
+  const seeded = await accounts.bootstrap(
+    BOOTSTRAP_USERNAME,
+    config.adminInitialPassword,
+    Date.now(),
+  );
+  if (seeded.generatedPassword) {
+    // Printed once, never stored in the clear. The account must change it on
+    // first sign-in anyway.
+    logger.warn(
+      `No KUBITOR_ADMIN_INITIAL_PASSWORD was set. Created "${BOOTSTRAP_USERNAME}" with password: ${seeded.generatedPassword}`,
+    );
+  } else if (seeded.created) {
+    logger.log(`Created the initial "${BOOTSTRAP_USERNAME}" account.`);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(
-    createAppModule({ config, health: new HealthService(db) }),
+    createAppModule({ config, health: new HealthService(db), auth, accounts }),
   );
 
   // The ingress terminates TLS and sets the forwarded headers we read.
   app.set('trust proxy', true);
+  app.enableShutdownHooks();
 
   const shutdown = async (): Promise<void> => {
     await app.close();
@@ -28,6 +73,7 @@ async function bootstrap(): Promise<void> {
   process.on('SIGINT', () => void shutdown());
 
   await app.listen(config.port, '0.0.0.0');
+  logger.log(`Listening on ${config.port}`);
 }
 
 await bootstrap();

@@ -1,8 +1,14 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import type { AccountsService } from './auth/accounts.service.js';
+import type { AuthService } from './auth/auth.service.js';
 import type { Config } from './config.js';
 import type { HealthService } from './health.service.js';
+import { AccountsController } from './http/accounts.controller.js';
+import { AuthController } from './http/auth.controller.js';
 import { HealthzController } from './http/healthz.controller.js';
-import { CONFIG, HEALTH_SERVICE } from './tokens.js';
+import { PasswordFreshGuard } from './http/password-fresh.guard.js';
+import { SessionGuard } from './http/session.guard.js';
+import { ACCOUNTS_SERVICE, AUTH_SERVICE, CONFIG, HEALTH_SERVICE } from './tokens.js';
 
 /**
  * Everything the HTTP layer needs, already constructed.
@@ -14,6 +20,8 @@ import { CONFIG, HEALTH_SERVICE } from './tokens.js';
 export interface AppDeps {
   config: Config;
   health: HealthService;
+  auth: AuthService;
+  accounts: AccountsService;
 }
 
 @Module({})
@@ -22,10 +30,14 @@ export class AppModule {}
 export function createAppModule(deps: AppDeps): DynamicModule {
   return {
     module: AppModule,
-    controllers: [HealthzController],
+    controllers: [HealthzController, AuthController, AccountsController],
     providers: [
       { provide: CONFIG, useValue: deps.config },
       { provide: HEALTH_SERVICE, useValue: deps.health },
+      { provide: AUTH_SERVICE, useValue: deps.auth },
+      { provide: ACCOUNTS_SERVICE, useValue: deps.accounts },
+      SessionGuard,
+      PasswordFreshGuard,
     ],
   };
 }
