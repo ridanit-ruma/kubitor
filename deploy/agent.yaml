@@ -78,6 +78,18 @@ spec:
             - name: drm
               mountPath: /sys/class/drm
               readOnly: true
+            - name: mounts
+              mountPath: /host/mounts
+              readOnly: true
+            # The only directory tree here, and the only one that cannot be
+            # avoided: `statfs` has to be called on a path this process can
+            # resolve, and a host mount point does not exist in the container.
+            # Remove this volume and its mount to give up per-filesystem sizes;
+            # everything else the agent reports still works, and the node's root
+            # filesystem still comes from the kubelet.
+            - name: hostfs
+              mountPath: /host/fs
+              readOnly: true
             - name: meminfo
               mountPath: /proc/meminfo
               readOnly: true
@@ -108,6 +120,16 @@ spec:
         - name: drm
           hostPath:
             path: /sys/class/drm
+            type: Directory
+        - name: mounts
+          hostPath:
+            # The host init's view, not this pod's: `/proc/mounts` inside a
+            # container describes the container.
+            path: /proc/1/mounts
+            type: File
+        - name: hostfs
+          hostPath:
+            path: /
             type: Directory
         - name: meminfo
           hostPath:
