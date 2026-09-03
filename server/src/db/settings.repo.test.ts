@@ -8,7 +8,7 @@ describeEachDialect('SettingsRepo', (ctx) => {
 
   beforeAll(async () => {
     await migrateToLatest(ctx.db, ctx.kind);
-    repo = new SettingsRepo(ctx.db);
+    repo = new SettingsRepo(ctx.db, ctx.sqlHelper);
   });
 
   it('returns undefined for a key that was never set', async () => {
@@ -29,6 +29,23 @@ describeEachDialect('SettingsRepo', (ctx) => {
     await repo.set('mode', 'manual', 1_756_800_001_000);
 
     expect(await repo.get('mode')).toBe('manual');
+  });
+
+  /**
+   * Scalars are the case that broke first: PostgreSQL stores them in `jsonb`
+   * and its driver hands them back already parsed, so a decoder that branched
+   * on the value's runtime type tried to parse them a second time.
+   */
+  it('round-trips scalar values of every JSON type', async () => {
+    await repo.set('a-string', 'manual', 1_756_800_000_000);
+    await repo.set('a-number', 42, 1_756_800_000_000);
+    await repo.set('a-boolean', false, 1_756_800_000_000);
+    await repo.set('a-null', null, 1_756_800_000_000);
+
+    expect(await repo.get('a-string')).toBe('manual');
+    expect(await repo.get('a-number')).toBe(42);
+    expect(await repo.get('a-boolean')).toBe(false);
+    expect(await repo.get('a-null')).toBeNull();
   });
 
   it('lists every stored key', async () => {

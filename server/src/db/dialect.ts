@@ -15,6 +15,16 @@ export interface DialectSql {
   json(): ColumnDataType;
   /** Extracts a top-level property from a JSON column as text. */
   jsonField(column: string, property: string): RawBuilder<string | null>;
+  /** Encodes a value for writing into a JSON column. */
+  encodeJson(value: unknown): string;
+  /**
+   * Decodes a JSON column as this dialect's driver returns it.
+   *
+   * Whether a value needs parsing is a property of the dialect, never of the
+   * value: node-postgres parses `jsonb` itself, so a stored JSON string comes
+   * back as a plain JS string that must not be parsed again.
+   */
+  decodeJson<T>(value: unknown): T;
 }
 
 export const SQLITE_SQL: DialectSql = {
@@ -23,6 +33,8 @@ export const SQLITE_SQL: DialectSql = {
   json: () => 'text',
   jsonField: (column, property) =>
     sql<string | null>`json_extract(${sql.ref(column)}, ${`$.${property}`})`,
+  encodeJson: (value) => JSON.stringify(value),
+  decodeJson: <T>(value: unknown): T => JSON.parse(value as string) as T,
 };
 
 export const POSTGRES_SQL: DialectSql = {
@@ -30,16 +42,10 @@ export const POSTGRES_SQL: DialectSql = {
   timestampMs: () => 'bigint',
   json: () => 'jsonb',
   jsonField: (column, property) => sql<string | null>`${sql.ref(column)} ->> ${property}`,
+  encodeJson: (value) => JSON.stringify(value),
+  decodeJson: <T>(value: unknown): T => value as T,
 };
 
 export function sqlFor(kind: DialectKind): DialectSql {
   return kind === 'sqlite' ? SQLITE_SQL : POSTGRES_SQL;
-}
-
-/**
- * Reads a JSON column. The PostgreSQL driver parses `jsonb` into objects while
- * SQLite hands back the raw text, so every read goes through here.
- */
-export function decodeJson<T>(value: unknown): T {
-  return typeof value === 'string' ? (JSON.parse(value) as T) : (value as T);
 }

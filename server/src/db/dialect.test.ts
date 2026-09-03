@@ -1,7 +1,7 @@
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { describeEachDialect } from '../test/db-harness.js';
-import { decodeJson, POSTGRES_SQL, SQLITE_SQL } from './dialect.js';
+import { POSTGRES_SQL, SQLITE_SQL } from './dialect.js';
 
 describe('dialect column types', () => {
   it('stores epoch milliseconds as an integer type on both dialects', () => {
@@ -15,13 +15,26 @@ describe('dialect column types', () => {
   });
 });
 
-describe('decodeJson', () => {
-  it('parses the string sqlite hands back', () => {
-    expect(decodeJson<{ a: number }>('{"a":1}')).toEqual({ a: 1 });
+describe('JSON codec', () => {
+  it('parses the text sqlite hands back', () => {
+    expect(SQLITE_SQL.decodeJson<{ a: number }>('{"a":1}')).toEqual({ a: 1 });
   });
 
-  it('passes through the object the postgres driver already parsed', () => {
-    expect(decodeJson<{ a: number }>({ a: 1 })).toEqual({ a: 1 });
+  it('passes through what the postgres driver already parsed', () => {
+    expect(POSTGRES_SQL.decodeJson<{ a: number }>({ a: 1 })).toEqual({ a: 1 });
+  });
+
+  /**
+   * Regression: decoding used to branch on `typeof value === 'string'`, which
+   * breaks for a JSON string scalar. node-postgres parses jsonb `"manual"` into
+   * the JS string `manual`, and parsing that again throws.
+   */
+  it('does not re-parse a json string scalar returned by postgres', () => {
+    expect(POSTGRES_SQL.decodeJson<string>('manual')).toBe('manual');
+  });
+
+  it('round-trips a string scalar through the sqlite codec', () => {
+    expect(SQLITE_SQL.decodeJson<string>(SQLITE_SQL.encodeJson('manual'))).toBe('manual');
   });
 });
 
