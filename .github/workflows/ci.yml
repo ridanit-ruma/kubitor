@@ -44,3 +44,7 @@ jobs:
       - run: pnpm test
         env:
           TEST_POSTGRES_URL: postgres://kubitor:kubitor@localhost:5432/kubitor_test
+
+      # Some breakage only shows up in a real build — module resolution differs
+      # between the bundler and the type checker.
+      - run: pnpm --filter @kubitor/client build
