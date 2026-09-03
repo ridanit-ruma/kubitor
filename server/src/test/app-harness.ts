@@ -12,6 +12,7 @@ import { LiveCache } from '../collect/live-cache.js';
 import type { Config } from '../config.js';
 import { AccountEventsRepo } from '../db/account-events.repo.js';
 import { AccountsRepo } from '../db/accounts.repo.js';
+import { AgentTokensRepo } from '../db/agent-tokens.repo.js';
 import { createDb } from '../db/connect.js';
 import { SQLITE_SQL } from '../db/dialect.js';
 import { IntegrationStateRepo } from '../db/integration-state.repo.js';
@@ -24,6 +25,7 @@ import { HealthService } from '../health.service.js';
 import { CapabilitiesService } from '../plugins/capabilities.service.js';
 import type { IntegrationModule } from '../plugins/contract.js';
 import { DetectionService } from '../plugins/detection.service.js';
+import { IngestPipeline } from '../plugins/ingest.js';
 import { IntegrationRegistry } from '../plugins/registry.js';
 import { FacetQuery } from '../query/facet-query.js';
 import { type FakeClusterState, fakeProbes } from './fake-probes.js';
@@ -40,6 +42,8 @@ export interface TestApp {
   query: FacetQuery;
   samples: NodeSamplesRepo;
   liveCache: LiveCache;
+  pipeline: IngestPipeline;
+  agentTokens: AgentTokensRepo;
   config: Config;
   close(): Promise<void>;
 }
@@ -96,6 +100,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const query = new FacetQuery(db, SQLITE_SQL);
   const samples = new NodeSamplesRepo(db);
   const liveCache = new LiveCache();
+  const pipeline = new IngestPipeline(db, SQLITE_SQL);
+  const agentTokens = new AgentTokensRepo(db);
   const capabilities = new CapabilitiesService({
     registry,
     states,
@@ -115,6 +121,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         query,
         samples,
         liveCache,
+        pipeline,
+        agentTokens,
       }),
     ],
   }).compile();
@@ -134,6 +142,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     query,
     samples,
     liveCache,
+    pipeline,
+    agentTokens,
     config,
     async close() {
       await app.close();

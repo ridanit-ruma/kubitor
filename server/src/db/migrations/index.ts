@@ -4,6 +4,7 @@ import { settingsMigration } from './0001-settings.js';
 import { authMigration } from './0002-auth.js';
 import { facetsMigration } from './0003-facets.js';
 import { coreFacetsMigration } from './0004-core-facets.js';
+import { agentMigration } from './0005-agent.js';
 
 /**
  * One ordered chain for both dialects. Keys sort lexicographically and are the
@@ -15,5 +16,6 @@ export function createMigrations(dialect: DialectSql): Record<string, Migration>
     '0002-auth': authMigration(dialect),
     '0003-facets': facetsMigration(dialect),
     '0004-core-facets': coreFacetsMigration(dialect),
+    '0005-agent': agentMigration(dialect),
   };
 }

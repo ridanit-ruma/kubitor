@@ -3,23 +3,28 @@ import type { AccountsService } from './auth/accounts.service.js';
 import type { AuthService } from './auth/auth.service.js';
 import type { LiveCache } from './collect/live-cache.js';
 import type { Config } from './config.js';
+import type { AgentTokensRepo } from './db/agent-tokens.repo.js';
 import type { NodeSamplesRepo } from './db/node-samples.repo.js';
 import type { HealthService } from './health.service.js';
 import { AccountsController } from './http/accounts.controller.js';
 import { AuthController } from './http/auth.controller.js';
 import { CapabilitiesController } from './http/capabilities.controller.js';
 import { HealthzController } from './http/healthz.controller.js';
+import { IngestController } from './http/ingest.controller.js';
 import { PasswordFreshGuard } from './http/password-fresh.guard.js';
 import { QueryController } from './http/query.controller.js';
 import { SessionGuard } from './http/session.guard.js';
 import type { CapabilitiesService } from './plugins/capabilities.service.js';
+import type { IngestPipeline } from './plugins/ingest.js';
 import type { FacetQuery } from './query/facet-query.js';
 import {
   ACCOUNTS_SERVICE,
+  AGENT_TOKENS,
   AUTH_SERVICE,
   CAPABILITIES_SERVICE,
   CONFIG,
   HEALTH_SERVICE,
+  INGEST_PIPELINE,
   LIVE_CACHE,
   NODE_SAMPLES,
   QUERY_SERVICE,
@@ -41,6 +46,8 @@ export interface AppDeps {
   query: FacetQuery;
   samples: NodeSamplesRepo;
   liveCache: LiveCache;
+  pipeline: IngestPipeline;
+  agentTokens: AgentTokensRepo;
 }
 
 @Module({})
@@ -55,6 +62,7 @@ export function createAppModule(deps: AppDeps): DynamicModule {
       AccountsController,
       CapabilitiesController,
       QueryController,
+      IngestController,
     ],
     providers: [
       { provide: CONFIG, useValue: deps.config },
@@ -65,6 +73,8 @@ export function createAppModule(deps: AppDeps): DynamicModule {
       { provide: QUERY_SERVICE, useValue: deps.query },
       { provide: NODE_SAMPLES, useValue: deps.samples },
       { provide: LIVE_CACHE, useValue: deps.liveCache },
+      { provide: INGEST_PIPELINE, useValue: deps.pipeline },
+      { provide: AGENT_TOKENS, useValue: deps.agentTokens },
       SessionGuard,
       PasswordFreshGuard,
     ],

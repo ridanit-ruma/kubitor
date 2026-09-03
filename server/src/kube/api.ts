@@ -15,6 +15,12 @@ export interface KubeApi {
   /** Raw kubelet `/stats/summary` document for one node. */
   nodeSummary(node: string): Promise<unknown>;
 
+  listIngresses(): Promise<IngressInfo[]>;
+  /** Rows from a namespaced custom resource, as plain JSON. */
+  listCustomObjects(group: string, version: string, plural: string): Promise<unknown[]>;
+  /** Log lines a pod produced in the last `sinceSeconds`. */
+  podLogsSince(namespace: string, labelSelector: string, sinceSeconds: number): Promise<string[]>;
+
   hasCrd(name: string): Promise<boolean>;
   workload(
     kind: 'Deployment' | 'DaemonSet' | 'StatefulSet',
@@ -65,6 +71,21 @@ export interface EventInfo {
   message: string;
   type: string;
   count: number;
+}
+
+export interface IngressRule {
+  host: string;
+  path: string;
+  service: string;
+  port: number | null;
+}
+
+export interface IngressInfo {
+  namespace: string;
+  name: string;
+  className: string | null;
+  tls: boolean;
+  rules: IngressRule[];
 }
 
 export interface WorkloadRef {

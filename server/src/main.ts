@@ -11,6 +11,7 @@ import { CollectorScheduler } from './collect/scheduler.js';
 import { loadConfig } from './config.js';
 import { AccountEventsRepo } from './db/account-events.repo.js';
 import { AccountsRepo } from './db/accounts.repo.js';
+import { AgentTokensRepo } from './db/agent-tokens.repo.js';
 import { createDb } from './db/connect.js';
 import { sqlFor } from './db/dialect.js';
 import { IntegrationStateRepo } from './db/integration-state.repo.js';
@@ -22,6 +23,7 @@ import { SessionsRepo } from './db/sessions.repo.js';
 import { TABLES } from './db/tables.js';
 import { HealthService } from './health.service.js';
 import { LiveGateway } from './http/ws.gateway.js';
+import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
@@ -92,6 +94,7 @@ async function bootstrap(): Promise<void> {
   const samples = new NodeSamplesRepo(db);
   const pipeline = new IngestPipeline(db, dialect);
   const query = new FacetQuery(db, dialect);
+  const agentTokens = new AgentTokensRepo(db);
 
   const modules = kube
     ? [
@@ -99,6 +102,7 @@ async function bootstrap(): Promise<void> {
           liveCache.record(sample);
           await samples.record(sample);
         }),
+        traefikIntegration(kube),
         ...INTEGRATIONS,
       ]
     : INTEGRATIONS;
@@ -165,6 +169,8 @@ async function bootstrap(): Promise<void> {
       query,
       samples,
       liveCache,
+      pipeline,
+      agentTokens,
     }),
   );
 

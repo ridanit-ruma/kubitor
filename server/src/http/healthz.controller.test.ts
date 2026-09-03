@@ -26,10 +26,23 @@ beforeAll(async () => {
   const query = {} as never;
   const samples = {} as never;
   const liveCache = {} as never;
+  const pipeline = {} as never;
+  const agentTokens = {} as never;
 
   const moduleRef = await Test.createTestingModule({
     imports: [
-      createAppModule({ config, health, auth, accounts, capabilities, query, samples, liveCache }),
+      createAppModule({
+        config,
+        health,
+        auth,
+        accounts,
+        capabilities,
+        query,
+        samples,
+        liveCache,
+        pipeline,
+        agentTokens,
+      }),
     ],
   }).compile();
 

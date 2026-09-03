@@ -3,6 +3,7 @@ import {
   ApiextensionsV1Api,
   AppsV1Api,
   CoreV1Api,
+  CustomObjectsApi,
   KubeConfig,
   NetworkingV1Api,
   StorageV1Api,
@@ -11,6 +12,7 @@ import {
 import { ProbeDeniedError } from '../plugins/contract.js';
 import {
   type EventInfo,
+  type IngressInfo,
   type KubeApi,
   type NodeInfo,
   type PodInfo,
@@ -34,6 +36,7 @@ export class KubeClient implements KubeApi {
   readonly #storage: StorageV1Api;
   readonly #networking: NetworkingV1Api;
   readonly #version: VersionApi;
+  readonly #custom: CustomObjectsApi;
 
   constructor(config: KubeConfig) {
     this.#core = config.makeApiClient(CoreV1Api);
@@ -42,6 +45,7 @@ export class KubeClient implements KubeApi {
     this.#storage = config.makeApiClient(StorageV1Api);
     this.#networking = config.makeApiClient(NetworkingV1Api);
     this.#version = config.makeApiClient(VersionApi);
+    this.#custom = config.makeApiClient(CustomObjectsApi);
   }
 
   static fromCluster(): KubeClient {
@@ -132,6 +136,58 @@ export class KubeClient implements KubeApi {
   async nodeSummary(node: string): Promise<unknown> {
     // The client already parses the JSON body for us.
     return this.#core.connectGetNodeProxyWithPath({ name: node, path: 'stats/summary' });
+  }
+
+  async listIngresses(): Promise<IngressInfo[]> {
+    const list = await guard(() => this.#networking.listIngressForAllNamespaces());
+
+    return (list?.items ?? []).map((ingress) => ({
+      namespace: ingress.metadata?.namespace ?? '',
+      name: ingress.metadata?.name ?? '',
+      className: ingress.spec?.ingressClassName ?? null,
+      tls: (ingress.spec?.tls ?? []).length > 0,
+      rules: (ingress.spec?.rules ?? []).flatMap((rule) =>
+        (rule.http?.paths ?? []).map((httpPath) => ({
+          host: rule.host ?? '*',
+          path: httpPath.path ?? '/',
+          service: httpPath.backend?.service?.name ?? '',
+          port: httpPath.backend?.service?.port?.number ?? null,
+        })),
+      ),
+    }));
+  }
+
+  async listCustomObjects(group: string, version: string, plural: string): Promise<unknown[]> {
+    const list = await optional(() =>
+      this.#custom.listCustomObjectForAllNamespaces({ group, version, resourcePlural: plural }),
+    );
+
+    const items = (list as { items?: unknown[] } | null)?.items;
+    return Array.isArray(items) ? items : [];
+  }
+
+  async podLogsSince(
+    namespace: string,
+    labelSelector: string,
+    sinceSeconds: number,
+  ): Promise<string[]> {
+    const pods = await guard(() => this.#core.listNamespacedPod({ namespace, labelSelector }));
+
+    const lines: string[] = [];
+    for (const pod of pods?.items ?? []) {
+      const name = pod.metadata?.name;
+      if (!name) continue;
+
+      // Read a bounded window rather than holding a stream open. A stream that
+      // fails mid-flight looks identical to a quiet one, and a wedged stream
+      // silently stops the facet; a failed poll is a visible collector error.
+      const text = await optional(() =>
+        this.#core.readNamespacedPodLog({ namespace, name, sinceSeconds, timestamps: false }),
+      );
+
+      if (typeof text === 'string') lines.push(...text.split('\n'));
+    }
+    return lines;
   }
 
   async hasCrd(name: string): Promise<boolean> {

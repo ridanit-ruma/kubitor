@@ -161,6 +161,22 @@ export interface NodeSamplesTable {
   net_tx: number | null;
 }
 
+export interface AgentTokensTable {
+  node: string;
+  token_hash: string;
+  created_at: number;
+  last_seen_at: number | null;
+}
+
+export interface FacetHostHardwareTable {
+  at: number;
+  integration: string;
+  node: string;
+  cpu_mhz: number | null;
+  temps: string;
+  attrs: string;
+}
+
 /** Every table kubitor stores. Later plans extend this interface. */
 export interface Database {
   settings: SettingsTable;
@@ -175,4 +191,6 @@ export interface Database {
   facet_workloads: FacetWorkloadsTable;
   facet_events: FacetEventsTable;
   node_samples: NodeSamplesTable;
+  agent_tokens: AgentTokensTable;
+  facet_host_hardware: FacetHostHardwareTable;
 }

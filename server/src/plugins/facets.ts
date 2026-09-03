@@ -104,7 +104,25 @@ const events = z.object({
   attrs,
 });
 
+const hostHardware = z.object({
+  at: z.number().int(),
+  node: text(253),
+  cpu_mhz: z.number().int().min(0).nullish(),
+  /** Sensor label to degrees Celsius. A sensor that cannot be read is absent. */
+  temps: z.record(z.string(), z.number()).default({}),
+  attrs,
+});
+
 export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
+  {
+    id: 'host.hardware',
+    kind: 'event',
+    table: 'facet_host_hardware',
+    timeColumn: 'at',
+    jsonColumns: ['temps', 'attrs'],
+    retentionMs: 7 * DAY_MS,
+    schema: hostHardware,
+  },
   {
     id: 'nodes',
     kind: 'state',

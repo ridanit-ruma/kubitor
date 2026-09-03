@@ -14,3 +14,5 @@ export const CAPABILITIES_SERVICE = Symbol('kubitor.capabilitiesService');
 export const QUERY_SERVICE = Symbol('kubitor.queryService');
 export const NODE_SAMPLES = Symbol('kubitor.nodeSamples');
 export const LIVE_CACHE = Symbol('kubitor.liveCache');
+export const INGEST_PIPELINE = Symbol('kubitor.ingestPipeline');
+export const AGENT_TOKENS = Symbol('kubitor.agentTokens');
