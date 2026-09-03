@@ -49,7 +49,9 @@ describe('the Hardware screen reaches the sidebar', () => {
         {
           id: 'host-agent',
           state: reporting.length > 0 ? 'present' : 'absent',
+          version: null,
           evidence: 'test',
+          unknownReason: null,
           override: 'auto',
           degraded: [],
           checkedAt: 0,
