@@ -131,7 +131,15 @@ export function Processor({
 }) {
   const cache = (level: string): Spec | null => {
     const found = cpu?.caches.find((entry) => cacheName(entry) === level);
-    return found ? { label: level, value: formatBytes(found.sizeBytes, 0) } : null;
+    if (!found) return null;
+
+    return {
+      label: level,
+      value: formatBytes(found.sizeBytes, 0),
+      // A hybrid chip has four L2 caches of two different sizes. The total is
+      // the machine's; the count is what stops it reading as one big cache.
+      hint: found.instances > 1 ? `${found.instances}×` : undefined,
+    };
   };
 
   return (
@@ -225,6 +233,8 @@ export function Memory({
             ? null
             : { label: 'Available', value: formatBytes(availableBytes) },
           summary ? { label: 'Type', value: summary.type } : null,
+          summary?.speed ? { label: 'Speed', value: summary.speed } : null,
+          summary?.formFactor ? { label: 'Form', value: summary.formFactor } : null,
           summary ? { label: 'Modules', value: summary.modules } : null,
           summary?.slots ? { label: 'Slots', value: summary.slots } : null,
           swapTotalBytes
@@ -389,6 +399,13 @@ function Mount({ mount }: { mount: DiskInfo }) {
         </span>
       </div>
       <Bar percent={percent} />
+      {/* Not the total less what is used: ext filesystems hold five percent
+          back for root, and that gap is neither used nor writable. */}
+      {mount.availableBytes !== undefined && (
+        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+          {formatBytes(mount.availableBytes)} free
+        </p>
+      )}
     </div>
   );
 }

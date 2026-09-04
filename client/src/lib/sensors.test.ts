@@ -70,14 +70,39 @@ describe('summarizeMemory', () => {
   const module = (sizeBytes: number, type: string | null) => ({ sizeBytes, type });
 
   /** Eight identical rows spread one fact over eight lines. */
-  it('states the type, the module size and the slots as three facts', () => {
-    const modules = Array.from({ length: 8 }, () => module(4 * 1024 ** 3, 'Low-Power-DDR3-RAM'));
+  it('states what the memory is as a handful of facts', () => {
+    const modules = Array.from({ length: 8 }, () => ({
+      sizeBytes: 3 * 1024 ** 3,
+      type: 'LPDDR5',
+      formFactor: 'Row of chips',
+      speedMts: 6600,
+      configuredSpeedMts: 5200,
+    }));
 
     expect(summarizeMemory(modules, 8)).toEqual({
-      type: 'Low-Power-DDR3-RAM',
-      modules: '8 × 4 GiB',
+      type: 'LPDDR5',
+      modules: '8 × 3 GiB',
       slots: '8/8',
+      speed: '5200 / 6600 MT/s',
+      formFactor: 'Row of chips',
     });
+  });
+
+  /**
+   * Firmware clocks a fast part down to what the controller can drive with
+   * every slot filled, and the gap is the reason to print both figures.
+   */
+  it('states the speed once where the part runs at what it is rated for', () => {
+    const modules = [
+      { sizeBytes: 16 * 1024 ** 3, type: 'DDR5', speedMts: 4800, configuredSpeedMts: 4800 },
+    ];
+    expect(summarizeMemory(modules, 2)?.speed).toBe('4800 MT/s');
+  });
+
+  it('says nothing about speed or form factor where only the kernel answered', () => {
+    const summary = summarizeMemory([module(4 * 1024 ** 3, 'Low-Power-DDR3-RAM')], 8);
+    expect(summary?.speed).toBeNull();
+    expect(summary?.formFactor).toBeNull();
   });
 
   it('says how many slots are still free', () => {

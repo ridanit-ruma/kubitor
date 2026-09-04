@@ -7,6 +7,14 @@ export interface DiskReading {
   fsType: string;
   totalBytes: number;
   usedBytes: number;
+  /**
+   * What an ordinary process may still write.
+   *
+   * Not `totalBytes - usedBytes`: ext filesystems hold five percent back for
+   * root, so on a 233 GiB root there are twelve gigabytes that are neither used
+   * nor available to anything the operator runs.
+   */
+  availableBytes: number;
 }
 
 /**
@@ -107,9 +115,11 @@ export async function readDisks(
       const total = Number(stats.blocks) * blockSize;
       if (total <= 0) continue;
 
-      // `bavail` is what an unprivileged process may use; the gap up to `bfree`
-      // is root's reserve, which is used space from a user's point of view.
-      const used = total - Number(stats.bavail) * blockSize;
+      // Used is what is written, which is the total less what is free — not
+      // the total less what is available. The gap between the two is root's
+      // reserve, and counting it as used put 33.5 GiB on screen for a
+      // filesystem holding 21.6, disagreeing with `df` on the same machine.
+      const used = total - Number(stats.bfree) * blockSize;
 
       seen.add(entry.device);
       readings.push({
@@ -118,6 +128,7 @@ export async function readDisks(
         fsType: entry.fsType,
         totalBytes: total,
         usedBytes: Math.max(0, used),
+        availableBytes: Math.max(0, Number(stats.bavail) * blockSize),
       });
     } catch {
       // A mount the container cannot resolve is skipped, not reported as empty.

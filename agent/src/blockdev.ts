@@ -127,8 +127,17 @@ function scheduler(raw: string | null): string | null {
   return /\[([^\]]+)\]/.exec(raw ?? '')?.[1] ?? null;
 }
 
+/**
+ * Drives the machine has, as opposed to volumes it has been handed.
+ *
+ * `loop`, `ram`, `zram`, `dm-` and `sr` are not disks. Neither are `rbd`,
+ * `nbd` and `drbd`: those are somebody else's storage mapped in over the
+ * network, they appear and disappear as pods move, and listing them on a node's
+ * hardware screen invites a reader to look for a model number and a temperature
+ * that cannot exist.
+ */
 function isRealDevice(name: string): boolean {
-  return !/^(loop|ram|zram|dm-|sr)\d*/.test(name);
+  return !/^(loop|ram|zram|dm-|sr|rbd|nbd|drbd)\d*/.test(name);
 }
 
 function numberOf(raw: string | null): number | null {

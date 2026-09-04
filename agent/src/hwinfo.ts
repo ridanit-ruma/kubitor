@@ -1,5 +1,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  DMI_TABLE as DMI_TABLE_PATH,
+  type MemoryDevice,
+  memoryDevices,
+  readDmiTable,
+} from './smbios.js';
 
 const CPU_ROOT = '/sys/devices/system/cpu';
 const CPUINFO = '/proc/cpuinfo';
@@ -9,7 +15,16 @@ export interface CpuCache {
   level: number;
   /** `Data`, `Instruction` or `Unified`. */
   type: string;
+  /**
+   * The whole machine's cache at this level, summed over its instances.
+   *
+   * Reading `cpu0` alone and calling the answer "the L2 cache" understates a
+   * hybrid processor by a factor of five: this chip has four L2 instances of
+   * different sizes, and cpu0's is one of them. `lscpu` sums the same way.
+   */
   sizeBytes: number;
+  /** How many separate caches that total is spread across. */
+  instances: number;
 }
 
 export interface CpuDetail {
@@ -38,12 +53,21 @@ export interface MemoryInventory {
 }
 
 export interface MemoryModule {
-  /** `MC#0_Chan#0_DIMM#0` — which controller, channel and slot. */
+  /** `MC#0_Chan#0_DIMM#0`, `Controller0-ChannelA` — controller, channel, slot. */
   slot: string;
   sizeBytes: number;
-  /** `Unbuffered-DDR4`, `Low-Power-DDR3-RAM`, and so on. */
+  /** `DDR5`, `LPDDR5`, or the kernel's own spelling where firmware is silent. */
   type: string | null;
   width: string | null;
+  /** `SODIMM`, `DIMM`, `Row of chips`. Only firmware knows this. */
+  formFactor: string | null;
+  /** What the part is rated for, in MT/s. */
+  speedMts: number | null;
+  /** What it was configured to run at — the speed it is running at now. */
+  configuredSpeedMts: number | null;
+  manufacturer: string | null;
+  partNumber: string | null;
+  rank: number | null;
 }
 
 /**
@@ -109,40 +133,124 @@ export async function readCpuDetail(root = CPU_ROOT, cpuinfo = CPUINFO): Promise
   return {
     ...detail,
     governor: (await maybeRead(join(root, 'cpu0', 'cpufreq', 'scaling_governor')))?.trim() ?? null,
-    caches: await readCaches(join(root, 'cpu0', 'cache')),
+    caches: await readCaches(root),
   };
 }
 
+/**
+ * Every cache in the machine, totalled per level.
+ *
+ * One cache is shared by the CPUs listed in its `shared_cpu_list`, and the same
+ * cache appears under every one of them; counting a level means counting the
+ * distinct instances. On a hybrid processor those instances differ in size,
+ * which is exactly why the first core's figure cannot stand for the rest.
+ */
 async function readCaches(root: string): Promise<CpuCache[]> {
-  let entries: string[];
+  let cpus: string[];
   try {
-    entries = await readdir(root);
+    cpus = (await readdir(root)).filter((name) => /^cpu\d+$/.test(name));
   } catch {
     return [];
   }
 
-  const caches: CpuCache[] = [];
-  for (const entry of entries.filter((name) => name.startsWith('index'))) {
-    const level = Number((await maybeRead(join(root, entry, 'level')))?.trim());
-    const type = (await maybeRead(join(root, entry, 'type')))?.trim();
-    const size = parseCacheSize((await maybeRead(join(root, entry, 'size'))) ?? '');
+  const instances = new Map<string, CpuCache>();
 
-    if (!Number.isFinite(level) || !type || size === null) continue;
-    caches.push({ level, type, sizeBytes: size });
+  for (const cpu of cpus.sort()) {
+    const base = join(root, cpu, 'cache');
+
+    let entries: string[];
+    try {
+      entries = (await readdir(base)).filter((name) => name.startsWith('index'));
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const dir = join(base, entry);
+      const level = Number((await maybeRead(join(dir, 'level')))?.trim());
+      const type = (await maybeRead(join(dir, 'type')))?.trim();
+      const size = parseCacheSize((await maybeRead(join(dir, 'size'))) ?? '');
+      if (!Number.isFinite(level) || !type || size === null) continue;
+
+      // The CPUs sharing it name the instance. Without that file every core
+      // looks like it has its own, and an L3 shared by twelve is counted twelve
+      // times.
+      const shared = (await maybeRead(join(dir, 'shared_cpu_list')))?.trim() ?? `${cpu}/${entry}`;
+      instances.set(`${level}|${type}|${shared}`, { level, type, sizeBytes: size, instances: 1 });
+    }
   }
 
-  return caches.sort((a, b) => a.level - b.level || a.type.localeCompare(b.type));
+  const totals = new Map<string, CpuCache>();
+  for (const cache of instances.values()) {
+    const key = `${cache.level}|${cache.type}`;
+    const running = totals.get(key);
+    if (running) {
+      running.sizeBytes += cache.sizeBytes;
+      running.instances += 1;
+    } else {
+      totals.set(key, { ...cache });
+    }
+  }
+
+  return [...totals.values()].sort((a, b) => a.level - b.level || a.type.localeCompare(b.type));
 }
 
 /**
- * Installed memory modules, slot by slot.
+ * Installed memory, slot by slot.
  *
- * From EDAC rather than SMBIOS: the DMI tables that hold manufacturer and speed
- * are root-only, and this agent runs as nobody. What EDAC exposes — which slot,
- * how large, what type — is the part that answers "can I add more memory", and
- * it is world-readable.
+ * Firmware first, the kernel second, because they disagree and firmware is
+ * right. EDAC describes memory as the controller was programmed to see it: on
+ * Alder Lake it calls LPDDR5 `Low-Power-DDR3-RAM` and reports 3 GiB devices as
+ * 4 GiB, which added up to eight modules of 4 GiB on a machine holding 23.2.
+ * Neither number was checked against the total the kernel reports for the same
+ * machine, so both were shown for a week.
+ *
+ * EDAC remains the fallback: it needs no privilege at all, and on a machine
+ * with no SMBIOS table — or a cluster that will not admit the init container
+ * that copies it — the slot layout it gives is still worth having.
  */
-export async function readMemoryModules(root = EDAC_ROOT): Promise<MemoryInventory> {
+export async function readMemoryModules(
+  root = EDAC_ROOT,
+  dmiTable = DMI_TABLE_PATH,
+): Promise<MemoryInventory> {
+  const table = await readDmiTable(dmiTable);
+  if (table) {
+    const inventory = fromFirmware(memoryDevices(table));
+    // A table that describes no memory device tells us nothing; that is a
+    // reason to ask the kernel, not to report a machine with no memory.
+    if (inventory.slots > 0) return inventory;
+  }
+
+  return fromEdac(root);
+}
+
+/** What the firmware says is on the board. */
+function fromFirmware(devices: readonly MemoryDevice[]): MemoryInventory {
+  const modules: MemoryModule[] = [];
+
+  for (const [index, device] of devices.entries()) {
+    // Size zero is an empty slot: counted as a slot, never as a module.
+    if (device.sizeBytes === null || device.sizeBytes === 0) continue;
+
+    modules.push({
+      slot: device.locator ?? device.bankLocator ?? `Device ${index}`,
+      sizeBytes: device.sizeBytes,
+      type: device.type,
+      width: device.dataWidthBits === null ? null : `x${device.dataWidthBits}`,
+      formFactor: device.formFactor,
+      speedMts: device.speedMts,
+      configuredSpeedMts: device.configuredSpeedMts,
+      manufacturer: device.manufacturer,
+      partNumber: device.partNumber,
+      rank: device.rank,
+    });
+  }
+
+  return { modules, slots: devices.length };
+}
+
+/** What the memory controller was told, for machines that offer nothing better. */
+async function fromEdac(root: string): Promise<MemoryInventory> {
   let controllers: string[];
   try {
     controllers = (await readdir(root)).filter((name) => /^mc\d+$/.test(name));
@@ -177,6 +285,12 @@ export async function readMemoryModules(root = EDAC_ROOT): Promise<MemoryInvento
         sizeBytes: megabytes * 1024 ** 2,
         type: (await maybeRead(join(dir, 'dimm_mem_type')))?.trim() || null,
         width: (await maybeRead(join(dir, 'dimm_dev_type')))?.trim() || null,
+        formFactor: null,
+        speedMts: null,
+        configuredSpeedMts: null,
+        manufacturer: null,
+        partNumber: null,
+        rank: null,
       });
     }
   }

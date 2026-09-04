@@ -146,6 +146,21 @@ export interface LiveHostMetrics {
   hottestCelsius: number | null;
 }
 
+/**
+ * One node's devices as the agent last saw them, carried by the socket.
+ *
+ * The same shapes the stored snapshot holds, so a screen reads one type
+ * whichever source answered — the difference is only how old it is.
+ */
+export interface LiveHostDetail {
+  node: string;
+  sampledAt: number;
+  sensors: SensorReading[];
+  nics: NicInfo[];
+  blockDevices: BlockDevice[];
+  gpus: GpuInfo[];
+}
+
 export interface GpuInfo {
   card: string;
   driver: string | null;
@@ -170,12 +185,16 @@ export interface DiskInfo {
   fsType: string;
   totalBytes: number;
   usedBytes: number;
+  /** What an unprivileged process may still write — not total less used. */
+  availableBytes?: number;
 }
 
 export interface CpuCache {
   level: number;
   type: string;
+  /** The machine's total at this level, across every instance of it. */
   sizeBytes: number;
+  instances: number;
 }
 
 export interface CpuDetail {
@@ -198,6 +217,13 @@ export interface MemoryModule {
   sizeBytes: number;
   type: string | null;
   width: string | null;
+  /** Firmware only. Null on a machine where the kernel had to answer. */
+  formFactor: string | null;
+  speedMts: number | null;
+  configuredSpeedMts: number | null;
+  manufacturer: string | null;
+  partNumber: string | null;
+  rank: number | null;
 }
 
 export interface NicInfo {

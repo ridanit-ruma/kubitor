@@ -39,6 +39,52 @@ spec:
         runAsUser: 65534
         seccompProfile:
           type: RuntimeDefault
+      # One read of the firmware's own description of the machine, then gone.
+      #
+      # `/sys/firmware/dmi/tables/DMI` is mode 0400 owned by root and holds the
+      # only truthful account of what memory is installed: the kernel's EDAC
+      # interface, which needs no privilege, reports this hardware's LPDDR5 as
+      # `Low-Power-DDR3-RAM` and its 3 GiB devices as 4 GiB.
+      #
+      # Root here is ownership, not power: uid 0 reading a file uid 0 owns needs
+      # no capability, so every one is dropped and privilege escalation is off.
+      # The agent itself keeps running as nobody and never sees the host's
+      # firmware — it reads the copy this leaves behind.
+      #
+      # Delete this container and its two volumes on a cluster that will not
+      # admit it. The agent starts either way and falls back to EDAC; the memory
+      # type is the only thing lost.
+      initContainers:
+        - name: read-firmware
+          image: ghcr.io/ridanit-ruma/kubitor-agent:latest
+          imagePullPolicy: IfNotPresent
+          command: [node, dist/dmi-copy.js]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          env:
+            - name: KUBITOR_DMI_SOURCE
+              value: /host/firmware/dmi/tables/DMI
+          volumeMounts:
+            # The firmware directory rather than the table itself: `/sys/firmware`
+            # exists on every Linux machine, and a hostPath naming a file that
+            # some machines do not have would leave the DaemonSet unschedulable
+            # exactly where it should have degraded quietly.
+            - name: firmware
+              mountPath: /host/firmware
+              readOnly: true
+            - name: dmi
+              mountPath: /run/kubitor/dmi
       containers:
         - name: agent
           image: ghcr.io/ridanit-ruma/kubitor-agent:latest
@@ -111,6 +157,12 @@ spec:
             - name: cpuinfo
               mountPath: /proc/cpuinfo
               readOnly: true
+            # What the init container copied out of the firmware. Empty on a
+            # machine with no SMBIOS table, which the agent treats as "ask the
+            # kernel instead".
+            - name: dmi
+              mountPath: /run/kubitor/dmi
+              readOnly: true
       volumes:
         - name: kubitor-token
           projected:
@@ -163,3 +215,9 @@ spec:
           hostPath:
             path: /proc/cpuinfo
             type: File
+        - name: firmware
+          hostPath:
+            path: /sys/firmware
+            type: Directory
+        - name: dmi
+          emptyDir: {}
