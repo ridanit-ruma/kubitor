@@ -81,6 +81,15 @@ spec:
             - name: mounts
               mountPath: /host/mounts
               readOnly: true
+            # Network is the one thing sysfs and procfs namespace per pod: read
+            # from inside the container they describe the container's single
+            # veth. These two come from the host's own namespace.
+            - name: netdev
+              mountPath: /host/net/dev
+              readOnly: true
+            - name: netclass
+              mountPath: /host/sys/class/net
+              readOnly: true
             # The only directory tree here, and the only one that cannot be
             # avoided: `statfs` has to be called on a path this process can
             # resolve, and a host mount point does not exist in the container.
@@ -127,6 +136,14 @@ spec:
             # container describes the container.
             path: /proc/1/mounts
             type: File
+        - name: netdev
+          hostPath:
+            path: /proc/1/net/dev
+            type: File
+        - name: netclass
+          hostPath:
+            path: /sys/class/net
+            type: Directory
         - name: hostfs
           hostPath:
             path: /

@@ -7,6 +7,11 @@ export interface GpuReading {
   driver: string | null;
   /** `8086:46b3`. Reported as-is rather than guessed at a marketing name. */
   pciId: string | null;
+  /** `Intel`, `AMD`, `NVIDIA` — from the PCI vendor id, which is unambiguous. */
+  vendor: string | null;
+  /** `8.0 GT/s PCIe` and its lane count. Absent on an integrated GPU. */
+  linkSpeed: string | null;
+  linkWidth: number | null;
   mhzCur: number | null;
   mhzMax: number | null;
   /** Memory clock, where the driver publishes one. */
@@ -59,6 +64,9 @@ export async function readGpus(root = DRM_ROOT): Promise<GpuReading[]> {
       card,
       driver,
       pciId,
+      vendor: vendorOf(pciId),
+      linkSpeed: linkOf(await maybeRead(join(deviceDir, 'current_link_speed'))),
+      linkWidth: positive(await maybeNumber(join(deviceDir, 'current_link_width'))),
       mhzCur: await currentClock(cardDir, deviceDir),
       mhzMax: await maximumClock(cardDir, deviceDir),
       memMhzCur: activeDpmLine(await maybeRead(join(deviceDir, 'pp_dpm_mclk'))),
@@ -142,6 +150,38 @@ export function highestDpmLine(text: string | null): number | null {
 
   const values = [...text.matchAll(/(\d+)\s*Mhz/gi)].map((match) => Number(match[1]));
   return values.length === 0 ? null : Math.max(...values);
+}
+
+/**
+ * The vendors a GPU is likely to come from.
+ *
+ * A full name needs the PCI id database, which is a package this agent does not
+ * carry. The vendor half of the id is a fixed, tiny set, and naming it turns
+ * `8086:46b3` into something a reader recognizes without pretending to know the
+ * marketing name of the part.
+ */
+const PCI_VENDORS: Record<string, string> = {
+  '8086': 'Intel',
+  '10de': 'NVIDIA',
+  '1002': 'AMD',
+  '1a03': 'ASPEED',
+  '102b': 'Matrox',
+  '15ad': 'VMware',
+  '1af4': 'Red Hat',
+};
+
+function vendorOf(pciId: string | null): string | null {
+  return pciId === null ? null : (PCI_VENDORS[pciId.split(':')[0] ?? ''] ?? null);
+}
+
+/** An integrated GPU answers `Unknown`, which is a driver saying "no link". */
+function linkOf(raw: string | null): string | null {
+  const value = raw?.trim();
+  return !value || value === 'Unknown' ? null : value;
+}
+
+function positive(value: number | null): number | null {
+  return value !== null && value > 0 ? value : null;
 }
 
 function clampPercent(value: number | null): number | null {

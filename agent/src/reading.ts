@@ -1,9 +1,18 @@
+import { type BlockDevice, createBlockMeter } from './blockdev.js';
 import { readCpu } from './cpufreq.js';
 import { createCpuMeter } from './cpustat.js';
 import { type DiskReading, readDisks } from './disks.js';
 import { readGpus } from './gpu.js';
+import { type CpuDetail, type MemoryModule, readCpuDetail, readMemoryModules } from './hwinfo.js';
 import { readHwmonTemperatures } from './hwmon.js';
 import { readMemory } from './meminfo.js';
+import { createNetworkMeter } from './netdev.js';
+
+/** Null unless at least one interface answered; a sum of nothing is not zero. */
+function sumRates(values: readonly (number | null)[]): number | null {
+  const usable = values.filter((value): value is number => value !== null);
+  return usable.length === 0 ? null : usable.reduce((total, value) => total + value, 0);
+}
 
 /** One complete picture of a host, as the server receives it. */
 export interface HostReading extends Record<string, unknown> {
@@ -25,8 +34,16 @@ export interface HostReading extends Record<string, unknown> {
   swap_total_bytes: number | null;
   swap_used_bytes: number | null;
   gpu_mhz: number | null;
+  /** Summed across physical interfaces, measured here once a second. */
+  net_rx_bytes_per_second: number | null;
+  net_tx_bytes_per_second: number | null;
   gpus: Record<string, unknown>[];
   disks: Record<string, unknown>[];
+  /** What the machine is, as opposed to what it is doing. */
+  cpu: Record<string, unknown> | null;
+  memory_modules: Record<string, unknown>[];
+  nics: Record<string, unknown>[];
+  block_devices: Record<string, unknown>[];
   temps: Record<string, number>;
 }
 
@@ -40,7 +57,11 @@ export interface HostReading extends Record<string, unknown> {
 export function createHostCollector(node: string, diskRefreshMs = 15_000) {
   let disks: DiskReading[] = [];
   let disksReadAt = 0;
+  let inventory: { cpu: CpuDetail; modules: MemoryModule[] } | null = null;
+
   const cpuBusy = createCpuMeter();
+  const network = createNetworkMeter();
+  const blockDevices = createBlockMeter();
 
   return async function collect(now: number): Promise<HostReading> {
     if (now - disksReadAt >= diskRefreshMs) {
@@ -48,12 +69,18 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
       disksReadAt = now;
     }
 
-    const [cpu, cpuPercent, memory, gpus, temps] = await Promise.all([
+    // What the machine is does not change while it is running, so it is read
+    // once and kept. What it is doing is read every time.
+    inventory ??= { cpu: await readCpuDetail(), modules: await readMemoryModules() };
+
+    const [cpu, cpuPercent, memory, gpus, temps, nics, blocks] = await Promise.all([
       readCpu(),
       cpuBusy(),
       readMemory(),
       readGpus(),
       readHwmonTemperatures(),
+      network(now),
+      blockDevices(now),
     ]);
 
     // The busiest card is the one a single figure should describe.
@@ -85,8 +112,14 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
       swap_total_bytes: memory.swapTotalBytes,
       swap_used_bytes: memory.swapUsedBytes,
       gpu_mhz: gpuMhz,
+      net_rx_bytes_per_second: sumRates(nics.map((nic) => nic.rxBytesPerSecond)),
+      net_tx_bytes_per_second: sumRates(nics.map((nic) => nic.txBytesPerSecond)),
       gpus: gpus.map((gpu) => ({ ...gpu })),
       disks: disks.map((disk) => ({ ...disk })),
+      cpu: { ...inventory.cpu },
+      memory_modules: inventory.modules.map((module) => ({ ...module })),
+      nics: nics.map((nic) => ({ ...nic })),
+      block_devices: blocks.map((device: BlockDevice) => ({ ...device })),
       temps,
     };
   };
