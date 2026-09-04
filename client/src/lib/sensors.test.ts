@@ -70,24 +70,29 @@ describe('summarizeMemory', () => {
   const module = (sizeBytes: number, type: string | null) => ({ sizeBytes, type });
 
   /** Eight identical rows spread one fact over eight lines. */
-  it('states the type, the module size and the slots in one line', () => {
+  it('states the type, the module size and the slots as three facts', () => {
     const modules = Array.from({ length: 8 }, () => module(4 * 1024 ** 3, 'Low-Power-DDR3-RAM'));
-    expect(summarizeMemory(modules, 8)).toBe('Low-Power-DDR3-RAM · 8 × 4 GiB · 8/8 slots');
+
+    expect(summarizeMemory(modules, 8)).toEqual({
+      type: 'Low-Power-DDR3-RAM',
+      modules: '8 × 4 GiB',
+      slots: '8/8',
+    });
   });
 
   it('says how many slots are still free', () => {
     const modules = [module(16 * 1024 ** 3, 'DDR5'), module(16 * 1024 ** 3, 'DDR5')];
-    expect(summarizeMemory(modules, 4)).toBe('DDR5 · 2 × 16 GiB · 2/4 slots');
+    expect(summarizeMemory(modules, 4)?.slots).toBe('2/4');
   });
 
   /** Averaging a mixed set away would state a size no module actually is. */
   it('refuses to average a mixed set into one size', () => {
     const modules = [module(8 * 1024 ** 3, 'DDR4'), module(16 * 1024 ** 3, 'DDR4')];
-    expect(summarizeMemory(modules, 2)).toBe('DDR4 · 2 modules · 2/2 slots');
+    expect(summarizeMemory(modules, 2)?.modules).toBe('2 mixed');
   });
 
   it('omits the slot count where the controller did not give one', () => {
-    expect(summarizeMemory([module(4 * 1024 ** 3, 'DDR4')], null)).toBe('DDR4 · 1 × 4 GiB');
+    expect(summarizeMemory([module(4 * 1024 ** 3, 'DDR4')], null)?.slots).toBeNull();
   });
 
   it('has nothing to summarize without modules', () => {

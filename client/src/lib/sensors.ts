@@ -85,36 +85,41 @@ export function looseSensors(
   });
 }
 
+export interface MemorySummary {
+  /** `DDR5`, `Low-Power-DDR3-RAM` — whatever the controller calls it. */
+  type: string;
+  /** `8 × 4 GiB`, or a plain count where the modules differ. */
+  modules: string;
+  /** `8/8`, or null where the controller did not say how many slots exist. */
+  slots: string | null;
+}
+
 /**
- * The memory a machine has, in one line.
+ * The memory a machine has, as three facts rather than eight rows.
  *
- * Listing eight identical modules spread one fact over eight rows. What a
- * reader wants is the type, the size of a module, and whether there is a slot
- * left — which is a sentence, not a table.
+ * Listing eight identical modules spread one fact over eight lines and buried
+ * the only part anyone acts on. What a reader wants is the type, the size of a
+ * module, and whether a slot is free.
  */
 export function summarizeMemory(
   modules: readonly { sizeBytes: number; type: string | null }[],
   slots: number | null,
-): string | null {
+): MemorySummary | null {
   if (modules.length === 0) return null;
 
   const kinds = [...new Set(modules.map((module) => module.type).filter(Boolean))];
   const sizes = [...new Set(modules.map((module) => module.sizeBytes))];
 
-  const parts: string[] = [];
-  if (kinds.length > 0) parts.push(kinds.join(' + '));
-
-  // Identical modules are the normal case and read as "8 × 4 GiB"; a mixed set
-  // is unusual enough to be worth saying plainly rather than averaging away.
-  parts.push(
-    sizes.length === 1 && sizes[0] !== undefined
-      ? `${modules.length} × ${gibibytes(sizes[0])}`
-      : `${modules.length} modules`,
-  );
-
-  if (slots !== null && slots > 0) parts.push(`${modules.length}/${slots} slots`);
-
-  return parts.join(' · ');
+  return {
+    type: kinds.length > 0 ? kinds.join(' + ') : 'unknown',
+    // Identical modules are the normal case and read as "8 × 4 GiB"; a mixed
+    // set is unusual enough to say plainly rather than average away.
+    modules:
+      sizes.length === 1 && sizes[0] !== undefined
+        ? `${modules.length} × ${gibibytes(sizes[0])}`
+        : `${modules.length} mixed`,
+    slots: slots !== null && slots > 0 ? `${modules.length}/${slots}` : null,
+  };
 }
 
 function gibibytes(bytes: number): string {

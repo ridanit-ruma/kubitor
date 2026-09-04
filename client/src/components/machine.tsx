@@ -27,6 +27,43 @@ import {
  * it is, and how hot it is.
  */
 
+interface Spec {
+  label: string;
+  value: string;
+  /** A secondary figure that belongs to the same fact — a range, a ceiling. */
+  hint?: string | undefined;
+}
+
+/**
+ * Facts as a labelled grid rather than a run-on line.
+ *
+ * Joining them with separators reads fine until it wraps, and on a phone it
+ * always wraps — mid-fact, so "8.0 GT/s" ends one line and "PCIe ×4" starts the
+ * next. A grid breaks between facts instead of inside them, keeps the labels in
+ * a column the eye can run down, and stays two facts wide where a plain list
+ * would be one.
+ */
+function Specs({ items }: { items: readonly (Spec | null | undefined)[] }) {
+  const usable = items.filter((item): item is Spec => !!item);
+  if (usable.length === 0) return null;
+
+  return (
+    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+      {usable.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <dt className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            {item.label}
+          </dt>
+          <dd className="truncate font-mono text-xs tabular">
+            {item.value}
+            {item.hint && <span className="ml-1.5 text-muted-foreground">{item.hint}</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Card({
   title,
   right,
@@ -49,14 +86,6 @@ function Card({
       {children}
     </section>
   );
-}
-
-/** Short facts run together, because each one alone is not worth a line. */
-function Facts({ items }: { items: readonly (string | null | undefined)[] }) {
-  const usable = items.filter((item): item is string => !!item);
-  if (usable.length === 0) return null;
-
-  return <p className="mt-1 font-mono text-xs text-muted-foreground">{usable.join(' · ')}</p>;
 }
 
 function Temperature({ summary }: { summary: SensorSummary | null }) {
@@ -89,33 +118,41 @@ export function Processor({
   loadPercent: number | null;
   sensors: readonly SensorReading[];
 }) {
+  const cache = (level: string): Spec | null => {
+    const found = cpu?.caches.find((entry) => cacheName(entry) === level);
+    return found ? { label: level, value: formatBytes(found.sizeBytes, 0) } : null;
+  };
+
   return (
     <Card title="Processor" right={<Temperature summary={cpuSensors(sensors)} />}>
       <p className="mt-1 font-mono text-2xl font-medium tabular">{formatPercent(percent)}</p>
       <Bar percent={percent} />
 
-      {cpu?.model && <p className="mt-2 text-sm">{cpu.model}</p>}
+      {cpu?.model && <p className="mt-2 truncate text-sm">{cpu.model}</p>}
 
-      <Facts
+      <Specs
         items={[
-          cpu?.coresPerSocket && cpu.sockets
-            ? `${cpu.sockets > 1 ? `${cpu.sockets} × ` : ''}${cpu.coresPerSocket} cores`
+          cpu?.coresPerSocket
+            ? {
+                label: 'Cores',
+                value: `${cpu.sockets && cpu.sockets > 1 ? `${cpu.sockets} × ` : ''}${cpu.coresPerSocket}`,
+                hint: cpu.threads ? `${cpu.threads}T` : undefined,
+              }
             : null,
-          cpu?.threads ? `${cpu.threads} threads` : null,
-          clockMhz === null ? null : `${formatMhz(clockMhz)} of ${formatMhz(clockMaxMhz)}`,
-          loadPercent === null ? null : `load ${formatPercent(loadPercent, 0)}`,
-          cpu?.governor,
+          clockMhz === null
+            ? null
+            : { label: 'Clock', value: formatMhz(clockMhz), hint: `of ${formatMhz(clockMaxMhz)}` },
+          loadPercent === null ? null : { label: 'Load', value: formatPercent(loadPercent, 0) },
+          cpu?.governor ? { label: 'Governor', value: cpu.governor } : null,
+          cache('L1d'),
+          cache('L1i'),
+          cache('L2'),
+          cache('L3'),
         ]}
       />
 
-      {cpu && cpu.caches.length > 0 && (
-        <Facts
-          items={cpu.caches.map((cache) => `${cacheName(cache)} ${formatBytes(cache.sizeBytes)}`)}
-        />
-      )}
-
       {cpu && cpu.features.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {cpu.features.map((feature) => (
             <span
               key={feature}
@@ -155,6 +192,8 @@ export function Memory({
   modules: readonly MemoryModule[];
   slots: number | null;
 }) {
+  const summary = summarizeMemory(modules, slots);
+
   return (
     <Card
       title="Memory"
@@ -169,16 +208,19 @@ export function Memory({
       </p>
       <Bar percent={percent} />
 
-      <Facts
+      <Specs
         items={[
-          availableBytes === null ? null : `${formatBytes(availableBytes)} available`,
-          swapTotalBytes ? `swap ${formatOfTotal(swapUsedBytes, swapTotalBytes)}` : null,
+          availableBytes === null
+            ? null
+            : { label: 'Available', value: formatBytes(availableBytes) },
+          summary ? { label: 'Type', value: summary.type } : null,
+          summary ? { label: 'Modules', value: summary.modules } : null,
+          summary?.slots ? { label: 'Slots', value: summary.slots } : null,
+          swapTotalBytes
+            ? { label: 'Swap', value: formatOfTotal(swapUsedBytes, swapTotalBytes) }
+            : null,
         ]}
       />
-
-      {/* One line rather than a row per module: eight identical rows spread a
-          single fact over eight lines and hid the one that matters. */}
-      <Facts items={[summarizeMemory(modules, slots)]} />
     </Card>
   );
 }
@@ -208,17 +250,15 @@ export function Network({
       ) : (
         <ul className="mt-2 flex flex-col gap-2">
           {nics.map((nic) => (
-            <li key={nic.name}>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate font-mono text-sm">{nic.name}</span>
-                <span className="shrink-0 font-mono text-xs tabular">
-                  ↓ {formatBytesPerSecond(nic.rxBytesPerSecond)}
-                  <span className="text-muted-foreground"> · </span>↑{' '}
-                  {formatBytesPerSecond(nic.txBytesPerSecond)}
-                </span>
-              </div>
-              <Facts
-                items={[
+            <li key={nic.name} className="flex flex-wrap items-baseline justify-between gap-x-4">
+              <span className="truncate font-mono text-sm">{nic.name}</span>
+              <span className="shrink-0 font-mono text-xs tabular">
+                ↓ {formatBytesPerSecond(nic.rxBytesPerSecond)}
+                <span className="text-muted-foreground"> · </span>↑{' '}
+                {formatBytesPerSecond(nic.txBytesPerSecond)}
+              </span>
+              <span className="w-full font-mono text-[11px] text-muted-foreground">
+                {[
                   nic.state,
                   nic.speedMbps === null ? null : formatLinkSpeed(nic.speedMbps),
                   nic.mtu === null ? null : `MTU ${nic.mtu}`,
@@ -229,8 +269,10 @@ export function Network({
                   nic.rxDropped + nic.txDropped > 0
                     ? `${formatCount(nic.rxDropped + nic.txDropped)} dropped`
                     : null,
-                ]}
-              />
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             </li>
           ))}
         </ul>
@@ -255,47 +297,63 @@ export function Storage({
   filesystems: readonly DiskInfo[];
   sensors: readonly SensorReading[];
 }) {
-  const groups = devices.map((device) => ({
-    device,
-    mounts: filesystems.filter((disk) => partitionOf(disk.device) === device.name),
-  }));
-
   const orphans = filesystems.filter(
     (disk) => !devices.some((device) => partitionOf(disk.device) === device.name),
   );
 
   return (
     <Card title="Storage">
-      <ul className="mt-3 flex flex-col gap-4">
-        {groups.map(({ device, mounts }) => (
-          <li key={device.name}>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate font-mono text-sm">
-                {device.name}
-                {device.model && <span className="text-muted-foreground"> · {device.model}</span>}
-              </span>
-              <span className="flex shrink-0 items-baseline gap-3">
-                <Temperature summary={deviceSensors(sensors, device.name)} />
-                <span className="font-mono text-sm tabular">{formatBytes(device.sizeBytes)}</span>
-              </span>
-            </div>
+      <ul className="mt-2 flex flex-col gap-5">
+        {devices.map((device) => {
+          const temperature = deviceSensors(sensors, device.name);
 
-            <Facts
-              items={[
-                device.rotational === null ? null : device.rotational ? 'spinning' : 'solid state',
-                device.linkSpeed === null
-                  ? null
-                  : `${device.linkSpeed}${device.linkWidth ? ` ×${device.linkWidth}` : ''}`,
-                `read ${formatBytesPerSecond(device.readBytesPerSecond)}`,
-                `write ${formatBytesPerSecond(device.writeBytesPerSecond)}`,
-              ]}
-            />
+          return (
+            <li key={device.name}>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="truncate font-mono text-sm">{device.name}</span>
+                <span className="shrink-0 font-mono text-sm tabular">
+                  {formatBytes(device.sizeBytes)}
+                </span>
+              </div>
 
-            {mounts.map((mount) => (
-              <Mount key={mount.mount} mount={mount} />
-            ))}
-          </li>
-        ))}
+              {/* Its own line: sharing one with the size and the temperature
+                  left a model number showing as a single letter. */}
+              {device.model && (
+                <p className="truncate text-xs text-muted-foreground">{device.model}</p>
+              )}
+
+              <Specs
+                items={[
+                  temperature
+                    ? {
+                        label: 'Temp',
+                        value: formatCelsius(temperature.celsius),
+                        hint:
+                          temperature.count > 1
+                            ? `${formatCelsius(temperature.lowest)}–${formatCelsius(temperature.highest)}`
+                            : undefined,
+                      }
+                    : null,
+                  device.linkSpeed
+                    ? {
+                        label: 'Link',
+                        value: device.linkSpeed,
+                        hint: device.linkWidth ? `×${device.linkWidth}` : undefined,
+                      }
+                    : null,
+                  { label: 'Read', value: formatBytesPerSecond(device.readBytesPerSecond) },
+                  { label: 'Write', value: formatBytesPerSecond(device.writeBytesPerSecond) },
+                ]}
+              />
+
+              {filesystems
+                .filter((disk) => partitionOf(disk.device) === device.name)
+                .map((mount) => (
+                  <Mount key={mount.mount} mount={mount} />
+                ))}
+            </li>
+          );
+        })}
 
         {orphans.map((mount) => (
           <li key={mount.mount}>
@@ -311,7 +369,7 @@ function Mount({ mount }: { mount: DiskInfo }) {
   const percent = mount.totalBytes > 0 ? (mount.usedBytes / mount.totalBytes) * 100 : null;
 
   return (
-    <div className="mt-2 pl-3">
+    <div className="mt-3 border-l border-line pl-3">
       <div className="flex items-baseline justify-between gap-3">
         <span className="truncate font-mono text-xs">
           {mount.mount}
@@ -336,7 +394,7 @@ export function partitionOf(devicePath: string): string {
 export function Graphics({ gpus }: { gpus: readonly GpuInfo[] }) {
   return (
     <Card title="Graphics">
-      <ul className="mt-2 flex flex-col gap-3">
+      <ul className="mt-2 flex flex-col gap-4">
         {gpus.map((gpu) => (
           <li key={gpu.card}>
             <div className="flex items-baseline justify-between gap-3">
@@ -351,19 +409,32 @@ export function Graphics({ gpus }: { gpus: readonly GpuInfo[] }) {
             <Bar
               percent={gpu.mhzCur !== null && gpu.mhzMax ? (gpu.mhzCur / gpu.mhzMax) * 100 : null}
             />
-            <Facts
+
+            <Specs
               items={[
-                gpu.pciId,
-                gpu.linkSpeed === null
+                gpu.pciId ? { label: 'Device', value: gpu.pciId } : null,
+                gpu.linkSpeed
+                  ? {
+                      label: 'Link',
+                      value: gpu.linkSpeed,
+                      hint: gpu.linkWidth ? `×${gpu.linkWidth}` : undefined,
+                    }
+                  : null,
+                {
+                  label: 'Memory',
+                  // Not a driver that failed to answer: an integrated GPU has
+                  // no memory of its own, and a blank would read as a gap.
+                  value: gpu.memShared
+                    ? 'shared'
+                    : formatOfTotal(gpu.memUsedBytes, gpu.memTotalBytes),
+                  hint: gpu.memShared ? 'system RAM' : undefined,
+                },
+                gpu.memMhzCur === null
                   ? null
-                  : `${gpu.linkSpeed}${gpu.linkWidth ? ` ×${gpu.linkWidth}` : ''}`,
-                gpu.memShared
-                  ? // Not a driver that failed to answer: an integrated GPU has
-                    // no memory of its own, and a blank would read as a gap.
-                    'memory shared with system RAM'
-                  : `VRAM ${formatOfTotal(gpu.memUsedBytes, gpu.memTotalBytes)}`,
-                gpu.memMhzCur === null ? null : `memory ${formatMhz(gpu.memMhzCur)}`,
-                gpu.busyPercent === null ? null : `${formatPercent(gpu.busyPercent, 0)} busy`,
+                  : { label: 'Mem clock', value: formatMhz(gpu.memMhzCur) },
+                gpu.busyPercent === null
+                  ? null
+                  : { label: 'Busy', value: formatPercent(gpu.busyPercent, 0) },
               ]}
             />
           </li>
