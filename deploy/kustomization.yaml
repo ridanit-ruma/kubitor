@@ -22,8 +22,8 @@ labels:
 
 images:
   - name: ghcr.io/ridanit-ruma/kubitor-server
-    newTag: sha-aaa1b58b9d507fb0b791a52e292623037208e3de
+    newTag: sha-b889dc2f00556d2d79180a0df34ae4bf16414654
   - name: ghcr.io/ridanit-ruma/kubitor-client
-    newTag: sha-aaa1b58b9d507fb0b791a52e292623037208e3de
+    newTag: sha-b889dc2f00556d2d79180a0df34ae4bf16414654
   - name: ghcr.io/ridanit-ruma/kubitor-agent
-    newTag: sha-aaa1b58b9d507fb0b791a52e292623037208e3de
+    newTag: sha-b889dc2f00556d2d79180a0df34ae4bf16414654
