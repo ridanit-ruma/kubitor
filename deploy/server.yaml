@@ -20,6 +20,24 @@ spec:
         app.kubernetes.io/component: server
     spec:
       serviceAccountName: kubitor-server
+      # A monitoring dashboard is worth less than nothing during the incident it
+      # exists to explain, so it outranks ordinary workloads when a node fills
+      # up — and stays below the cluster's own services, which it only watches.
+      priorityClassName: kubitor-critical
+      # Five minutes is the default wait before a pod is moved off a node that
+      # stopped answering. That is five minutes of no dashboard at exactly the
+      # moment someone is looking for one. SQLite lives on a ReadWriteOnce
+      # volume, so the move is safe as soon as the old kubelet is gone: the
+      # volume cannot be attached twice.
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

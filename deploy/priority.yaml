@@ -1,0 +1,22 @@
+# Where kubitor sits when a node runs out of room.
+#
+# Above ordinary workloads, because a dashboard that gets evicted during the
+# incident it exists to explain is worth nothing. Below `system-cluster-critical`
+# (2000000000) and everything else the cluster needs to function: kubitor
+# watches the cluster, it is not part of it, and it must never be the reason
+# CoreDNS or a CNI agent cannot be placed.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: kubitor-critical
+value: 1000000
+globalDefault: false
+# Never preempts. The rank is for two things only: being scheduled ahead of
+# ordinary work when a node has room, and being among the last the kubelet
+# evicts when one runs out of memory. Throwing somebody else's workload off a
+# node to make space for a dashboard is not a trade a monitoring tool gets to
+# make on its operator's behalf.
+preemptionPolicy: Never
+description: >-
+  kubitor's own server, dashboard and node agents. Ranks above ordinary
+  workloads and below the cluster's own critical services.

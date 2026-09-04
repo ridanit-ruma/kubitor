@@ -4,7 +4,10 @@ metadata:
   name: kubitor-client
   namespace: kubitor
 spec:
-  replicas: 1
+  # Two, on different nodes. The dashboard holds no state, so the only reason it
+  # was ever one replica was that nobody had said otherwise — and one replica
+  # means a node reboot takes the screen down with it.
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: kubitor
@@ -17,6 +20,27 @@ spec:
     spec:
       # The dashboard never talks to the Kubernetes API; only the server does.
       automountServiceAccountToken: false
+      priorityClassName: kubitor-critical
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      # Spread rather than pinned: `ScheduleAnyway` so a three-node cluster that
+      # cannot honour it still runs both replicas rather than leaving one
+      # Pending — which would be a worse answer than two on one node.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kubitor
+              app.kubernetes.io/component: client
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -51,6 +75,20 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+---
+# One replica may go at a time, so a rolling node drain cannot take the whole
+# dashboard down on its way through the cluster.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kubitor-client
+  namespace: kubitor
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubitor
+      app.kubernetes.io/component: client
 ---
 apiVersion: v1
 kind: Service

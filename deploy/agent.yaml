@@ -30,8 +30,12 @@ spec:
         app.kubernetes.io/component: agent
     spec:
       serviceAccountName: kubitor-agent
+      priorityClassName: kubitor-critical
       # Host facts are per node, so a control-plane taint must not create a
-      # blind spot on exactly the machines that matter most.
+      # blind spot on exactly the machines that matter most. `Exists` with no
+      # key tolerates every taint there is, including the not-ready and
+      # unreachable ones: an agent belongs on its node whatever else is wrong
+      # with it, and a node in trouble is the one worth watching.
       tolerations:
         - operator: Exists
       securityContext:

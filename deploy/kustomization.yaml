@@ -5,6 +5,7 @@ kind: Kustomization
 namespace: kubitor
 
 resources:
+  - priority.yaml
   - rbac.yaml
   - pvc.yaml
   - server.yaml
