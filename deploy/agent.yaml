@@ -87,8 +87,11 @@ spec:
             - name: netdev
               mountPath: /host/net/dev
               readOnly: true
-            - name: netclass
-              mountPath: /host/sys/class/net
+            # The whole of sysfs, because `/sys/class/net/<if>` is a symlink
+            # into `/sys/devices/...`: mounting the class directory alone gives
+            # links that point outside the mount and resolve to nothing.
+            - name: hostsys
+              mountPath: /host/sys
               readOnly: true
             # The only directory tree here, and the only one that cannot be
             # avoided: `statfs` has to be called on a path this process can
@@ -140,9 +143,9 @@ spec:
           hostPath:
             path: /proc/1/net/dev
             type: File
-        - name: netclass
+        - name: hostsys
           hostPath:
-            path: /sys/class/net
+            path: /sys
             type: Directory
         - name: hostfs
           hostPath:

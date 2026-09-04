@@ -112,6 +112,9 @@ const hostHardware = z.object({
   gpu_mhz: z.number().int().min(0).nullish(),
   /** Host RAM in use, which is not the kubelet's container working set. */
   mem_used_bytes: z.number().int().min(0).nullish(),
+  /** Measured on the host, so it moves at the rate the dashboard claims. */
+  net_rx_bytes_per_second: z.number().min(0).nullish(),
+  net_tx_bytes_per_second: z.number().min(0).nullish(),
   /** Sensor label to degrees Celsius. A sensor that cannot be read is absent. */
   temps: z.record(z.string(), z.number()).default({}),
   attrs,

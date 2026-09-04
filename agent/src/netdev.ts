@@ -8,6 +8,14 @@ import { readFile } from 'node:fs/promises';
  * real interfaces, which is what a node screen is about.
  */
 const HOST_NET_DEV = '/host/net/dev';
+/**
+ * Sysfs as the host mounted it.
+ *
+ * `/sys/class/net/<if>` is a symlink into `/sys/devices/...`, so mounting the
+ * class directory on its own gives links that point outside the mount and
+ * resolve to nothing. The whole tree is mounted instead, which also puts the
+ * host's interfaces here rather than the pod's.
+ */
 const NET_CLASS = '/host/sys/class/net';
 
 export interface InterfaceCounters {

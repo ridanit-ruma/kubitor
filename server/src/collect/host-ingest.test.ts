@@ -13,6 +13,7 @@ function reading(overrides: Record<string, unknown> = {}): Record<string, unknow
     node: 'ignored-by-the-server',
     cpu_model: 'Test CPU',
     cpu_cores: 12,
+    cpu_percent: 12.5,
     cpu_mhz_avg: 2300,
     cpu_mhz_max: 4400,
     load1: 0.5,
@@ -25,6 +26,8 @@ function reading(overrides: Record<string, unknown> = {}): Record<string, unknow
     swap_total_bytes: 0,
     swap_used_bytes: 0,
     gpu_mhz: 1100,
+    net_rx_bytes_per_second: 109_345,
+    net_tx_bytes_per_second: 263_545,
     gpus: [{ card: 'card1', driver: 'i915', mhzCur: 1100, mhzMax: 1100 }],
     disks: [
       { mount: '/', device: '/dev/nvme0n1p2', fsType: 'ext4', totalBytes: 100, usedBytes: 10 },
@@ -108,6 +111,26 @@ describeEachDialect('HostIngest', (ctx) => {
 
     const rows = await ctx.db.selectFrom('facet_host_resources').selectAll().execute();
     expect(rows.map((row) => row.node).sort()).toEqual(['calder', 'decker']);
+  });
+
+  /**
+   * Every field the agent sends has to be declared on the facet as well as on
+   * the ingest schema. One that is declared on only one of them is dropped in
+   * silence — the write succeeds, the column stays null, and nothing complains.
+   */
+  it('keeps every measurement the agent sent, not just the ones it parsed', async () => {
+    await ingest.accept('calder', [reading()], NOW);
+
+    const row = await ctx.db
+      .selectFrom('facet_host_hardware')
+      .selectAll()
+      .executeTakeFirstOrThrow();
+
+    expect(Number(row.cpu_mhz)).toBe(2300);
+    expect(Number(row.cpu_percent)).toBe(12.5);
+    expect(Number(row.mem_used_bytes)).toBe(2_955_392_000);
+    expect(Number(row.net_rx_bytes_per_second)).toBe(109_345);
+    expect(Number(row.net_tx_bytes_per_second)).toBe(263_545);
   });
 
   it('stores the disks and GPUs it was given', async () => {
