@@ -50,6 +50,14 @@ export interface LiveHostMetrics {
   swapTotalBytes: number | null;
   swapUsedBytes: number | null;
   gpuMhz: number | null;
+  /**
+   * Throughput measured on the host, once a second.
+   *
+   * The kubelet reports the same counters but re-reads them every few seconds,
+   * so a rate derived from it advances in visible steps.
+   */
+  netRxBytesPerSecond: number | null;
+  netTxBytesPerSecond: number | null;
   hottestCelsius: number | null;
 }
 

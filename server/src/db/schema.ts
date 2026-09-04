@@ -176,6 +176,8 @@ export interface FacetHostHardwareTable {
   cpu_percent: number | null;
   gpu_mhz: number | null;
   mem_used_bytes: number | null;
+  net_rx_bytes_per_second: number | null;
+  net_tx_bytes_per_second: number | null;
   temps: string;
   attrs: string;
 }
@@ -200,6 +202,10 @@ export interface FacetHostResourcesTable {
   swap_used_bytes: number | null;
   gpus: string;
   disks: string;
+  cpu: string;
+  memory_modules: string;
+  nics: string;
+  block_devices: string;
   attrs: string;
 }
 

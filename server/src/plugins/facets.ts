@@ -145,6 +145,14 @@ const hostResources = z.object({
   gpus: z.array(z.record(z.string(), z.unknown())).default([]),
   /** `{mount, device, fsType, totalBytes, usedBytes}` */
   disks: z.array(z.record(z.string(), z.unknown())).default([]),
+  /** Topology, caches and notable instruction sets. */
+  cpu: z.record(z.string(), z.unknown()).nullish(),
+  /** One entry per populated memory slot. */
+  memory_modules: z.array(z.record(z.string(), z.unknown())).max(64).default([]),
+  /** Physical interfaces with their link and their throughput. */
+  nics: z.array(z.record(z.string(), z.unknown())).max(64).default([]),
+  /** Whole disks, with what they are and what they are doing. */
+  block_devices: z.array(z.record(z.string(), z.unknown())).max(64).default([]),
   attrs,
 });
 
@@ -163,7 +171,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'state',
     table: 'facet_host_resources',
     timeColumn: 'observed_at',
-    jsonColumns: ['gpus', 'disks', 'attrs'],
+    jsonColumns: ['gpus', 'disks', 'cpu', 'memory_modules', 'nics', 'block_devices', 'attrs'],
     schema: hostResources,
   },
   {

@@ -7,6 +7,7 @@ import { coreFacetsMigration } from './0004-core-facets.js';
 import { agentMigration } from './0005-agent.js';
 import { hostResourcesMigration } from './0006-host-resources.js';
 import { cpuUtilizationMigration } from './0007-cpu-utilization.js';
+import { hostInventoryMigration } from './0008-host-inventory.js';
 
 /**
  * One ordered chain for both dialects. Keys sort lexicographically and are the
@@ -21,5 +22,6 @@ export function createMigrations(dialect: DialectSql): Record<string, Migration>
     '0005-agent': agentMigration(dialect),
     '0006-host-resources': hostResourcesMigration(dialect),
     '0007-cpu-utilization': cpuUtilizationMigration(dialect),
+    '0008-host-inventory': hostInventoryMigration(dialect),
   };
 }
