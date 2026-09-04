@@ -204,6 +204,8 @@ export interface FacetHostResourcesTable {
   disks: string;
   cpu: string;
   memory_modules: string;
+  memory_slots: number | null;
+  sensors: string;
   nics: string;
   block_devices: string;
   attrs: string;
