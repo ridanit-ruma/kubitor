@@ -1,86 +1,32 @@
 'use client';
 
-import { type Column, FacetTable } from '@/components/facet-table';
-import { Badge } from '@/components/ui/badge';
+import { useMemo } from 'react';
+import { FacetTable } from '@/components/facet-table';
+import { type RouteRow, routeColumns, routeKinds } from '@/components/route-columns';
+import { useManifest } from '@/lib/manifest-context';
 import { encodeRouteId } from '@/lib/route-id';
-
-interface RouteRow extends Record<string, unknown> {
-  kind: string;
-  namespace: string;
-  name: string;
-  host: string;
-  path: string;
-  service: string;
-  port: number | null;
-  tls: number;
-  class: string | null;
-  integration: string;
-}
-
-const columns: Column<RouteRow>[] = [
-  {
-    key: 'host',
-    header: 'Address',
-    width: 'w-[34%]',
-    render: (row) => (
-      <span className="font-mono text-xs">
-        {row.host}
-        <span className="text-muted-foreground">{row.path}</span>
-      </span>
-    ),
-  },
-  {
-    key: 'service',
-    header: 'Backend',
-    width: 'w-[24%]',
-    priority: 'sm',
-    render: (row) => (
-      <span className="font-mono text-xs">
-        {row.service}
-        {row.port === null ? '' : `:${row.port}`}
-      </span>
-    ),
-  },
-  {
-    key: 'tls',
-    header: 'TLS',
-    width: 'w-[22%] sm:w-[10%]',
-    render: (row) =>
-      row.tls === 1 ? (
-        <Badge variant="secondary">TLS</Badge>
-      ) : (
-        <Badge variant="outline">plain</Badge>
-      ),
-  },
-  {
-    key: 'namespace',
-    header: 'Namespace',
-    width: 'w-[16%]',
-    priority: 'md',
-    render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
-  },
-  {
-    key: 'integration',
-    header: 'Served by',
-    width: 'w-[16%]',
-    priority: 'lg',
-    render: (row) => (
-      <span className="font-mono text-xs text-muted-foreground">
-        {row.integration} · {row.kind}
-      </span>
-    ),
-  },
-];
 
 /**
  * Every address the cluster answers on, whoever publishes it.
  *
- * The vendor-neutral index: one row per address, naming the integration that
- * reported it. A vendor's own screen — Traefik routers, say — is where its
- * particular concepts live, and this list is deliberately the part that looks
- * the same whichever ingress you run.
+ * One screen, not one per ingress. Traefik had a list of its own, and it was
+ * the same rows twice: an operator looking for an address had to know which of
+ * the two screens their cluster's ingress had put it on. What Traefik actually
+ * added — its matcher expression, in its own words — is a column here now, and
+ * it appears exactly where Traefik is installed. Another ingress with something
+ * of its own to say will deepen this screen the same way rather than starting a
+ * second one.
  */
 export default function RoutesPage() {
+  const { manifest } = useManifest();
+  const sources = manifest?.facets['http.routes']?.sources ?? [];
+
+  // Keyed on the sources rather than the manifest object, which is replaced on
+  // every poll and would otherwise rebuild the table's columns each time.
+  const key = sources.join(',');
+  const columns = useMemo(() => routeColumns(key === '' ? [] : key.split(',')), [key]);
+  const kinds = useMemo(() => routeKinds(key === '' ? [] : key.split(',')), [key]);
+
   return (
     <div className="screen gap-3">
       <div>
@@ -93,7 +39,7 @@ export default function RoutesPage() {
       <FacetTable<RouteRow>
         facet="routes"
         columns={columns}
-        filters={[{ key: 'kind', label: 'Kinds', values: ['Ingress', 'IngressRoute'] }]}
+        filters={[{ key: 'kind', label: 'Kinds', values: kinds }]}
         searchPlaceholder="Find a route by host, path or service"
         excludable
         excludePlaceholder="Hide routes matching…"

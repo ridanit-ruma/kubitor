@@ -302,4 +302,14 @@ describe('traefik access collector', () => {
 
     expect(emissions[0]?.rows).toEqual([]);
   });
+
+  /**
+   * Addresses live on the Routes screen whichever ingress publishes them. A
+   * second list of the same rows meant an operator had to know which ingress
+   * their cluster ran before they could find one; what Traefik knows that the
+   * neutral shape does not travels in `attrs` and becomes a column there.
+   */
+  it('adds no navigation of its own', () => {
+    expect(traefikIntegration(fakeApi()).nav).toEqual([]);
+  });
 });

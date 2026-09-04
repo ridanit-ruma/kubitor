@@ -136,16 +136,17 @@ export function traefikIntegration(api: KubeApi): IntegrationModule {
       ];
     },
 
-    nav: [
-      {
-        id: 'traefik-routers',
-        title: 'Traefik routers',
-        category: 'network',
-        href: '/integrations/traefik',
-        requiresFacet: 'http.routes',
-        order: 10,
-      },
-    ],
+    /**
+     * No screen of its own.
+     *
+     * Traefik publishes addresses, and the Routes screen is where addresses
+     * live whichever ingress publishes them. A second list of the same rows
+     * meant an operator had to know which ingress their cluster ran before they
+     * could find one. What Traefik knows that the neutral shape does not — its
+     * matcher expression — travels in `attrs` and becomes a column on that
+     * screen wherever Traefik is feeding it.
+     */
+    nav: [],
   };
 }
 
