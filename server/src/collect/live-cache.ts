@@ -61,6 +61,24 @@ export interface LiveHostMetrics {
   hottestCelsius: number | null;
 }
 
+/**
+ * The agent's per-device readings, for the screen looking at that one node.
+ *
+ * Sensors, interface rates and disk throughput move every second, and they were
+ * reaching the browser through a stored snapshot replaced every fifteen — so a
+ * card's heading counted up while the list beneath it held still for half a
+ * minute. They are kept apart from `LiveHostMetrics` because they are only sent
+ * to a client that asked for this node: a hundred-node cluster must not push
+ * every sensor of every machine to every open tab.
+ */
+export interface LiveHostDetail {
+  sampledAt: number;
+  sensors: Record<string, unknown>[];
+  nics: Record<string, unknown>[];
+  blockDevices: Record<string, unknown>[];
+  gpus: Record<string, unknown>[];
+}
+
 export interface NodeCapacity {
   cpuMilli: number;
   memoryBytes: number;
@@ -81,6 +99,7 @@ export class LiveCache {
   readonly #previousCounters = new Map<string, { at: number; rx: number; tx: number }>();
   readonly #capacity = new Map<string, NodeCapacity>();
   readonly #host = new Map<string, LiveHostMetrics>();
+  readonly #detail = new Map<string, LiveHostDetail>();
   /** Readings older than this are dropped: a dead node must not look alive. */
   readonly #stalenessMs: number;
 
@@ -163,8 +182,21 @@ export class LiveCache {
       .map(([node]) => node);
   }
 
-  recordHost(node: string, host: LiveHostMetrics): void {
+  recordHost(node: string, host: LiveHostMetrics, detail?: LiveHostDetail): void {
     this.#host.set(node, host);
+    if (detail) this.#detail.set(node, detail);
+  }
+
+  /**
+   * One node's per-device readings, or null where they have gone stale.
+   *
+   * Stale is the same test the summary uses: an agent that stopped a minute ago
+   * must not leave a frozen temperature on screen beside a live CPU figure.
+   */
+  detailFor(node: string, now: number): LiveHostDetail | null {
+    const detail = this.#detail.get(node);
+    if (!detail || now - detail.sampledAt > this.#stalenessMs) return null;
+    return detail;
   }
 
   forget(node: string): void {
@@ -172,5 +204,6 @@ export class LiveCache {
     this.#previousCounters.delete(node);
     this.#capacity.delete(node);
     this.#host.delete(node);
+    this.#detail.delete(node);
   }
 }

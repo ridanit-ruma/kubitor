@@ -1,4 +1,4 @@
-import type { LiveNodeMetrics } from './live-cache.js';
+import type { LiveHostDetail, LiveNodeMetrics } from './live-cache.js';
 
 /** Everything the socket may carry. */
 export type LiveFrame =
@@ -9,6 +9,8 @@ export type LiveFrame =
       /** When the server built the frame, so the client can show a real age. */
       generatedAt: number;
       nodes: LiveNodeMetrics[];
+      /** Present only for the one node this client asked to watch. */
+      detail?: { node: string } & LiveHostDetail;
     }
   | { topic: 'capabilities'; generatedAt: number }
   /** The payload was too large to push; refetch over REST instead. */
@@ -29,7 +31,11 @@ export interface FramedResult {
   degraded: boolean;
 }
 
-export function frameMetrics(nodes: readonly LiveNodeMetrics[], generatedAt: number): FramedResult {
+export function frameMetrics(
+  nodes: readonly LiveNodeMetrics[],
+  generatedAt: number,
+  detail?: ({ node: string } & LiveHostDetail) | null,
+): FramedResult {
   const sampledAt = nodes.length === 0 ? null : Math.max(...nodes.map((n) => n.sampledAt));
 
   const frame: LiveFrame = {
@@ -37,6 +43,7 @@ export function frameMetrics(nodes: readonly LiveNodeMetrics[], generatedAt: num
     sampledAt,
     generatedAt,
     nodes: [...nodes],
+    ...(detail ? { detail } : {}),
   };
 
   const json = JSON.stringify(frame);

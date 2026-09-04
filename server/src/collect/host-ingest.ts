@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { IngestPipeline } from '../plugins/ingest.js';
-import type { LiveCache, LiveHostMetrics } from './live-cache.js';
+import type { LiveCache, LiveHostDetail, LiveHostMetrics } from './live-cache.js';
 
 /**
  * What the agent sends, once a second.
@@ -101,7 +101,7 @@ export class HostIngest {
       accepted += 1;
       const firstReport = !this.#latest.has(node);
       this.#latest.set(node, parsed.data);
-      this.#deps.cache.recordHost(node, toLiveMetrics(parsed.data, now));
+      this.#deps.cache.recordHost(node, toLiveMetrics(parsed.data, now), toLiveDetail(parsed.data));
       if (firstReport) this.#onFirstReport?.(node);
     }
 
@@ -193,5 +193,21 @@ export function toLiveMetrics(reading: HostReading, now: number): LiveHostMetric
     netRxBytesPerSecond: reading.net_rx_bytes_per_second ?? null,
     netTxBytesPerSecond: reading.net_tx_bytes_per_second ?? null,
     hottestCelsius: celsius.length === 0 ? null : Math.max(...celsius),
+  };
+}
+
+/**
+ * The per-device half of a reading, for the node screen.
+ *
+ * Passed through as the agent sent it: this is the same shape the stored
+ * snapshot carries, so a screen reads one type whichever source answered.
+ */
+export function toLiveDetail(reading: HostReading): LiveHostDetail {
+  return {
+    sampledAt: reading.at,
+    sensors: reading.sensors,
+    nics: reading.nics,
+    blockDevices: reading.block_devices,
+    gpus: reading.gpus,
   };
 }

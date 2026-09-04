@@ -19,6 +19,15 @@ interface Client {
   socket: WebSocket;
   sessionId: string;
   alive: boolean;
+  /**
+   * The one node this client is looking at, if any.
+   *
+   * A node screen shows sensors, interface rates and disk throughput, all of
+   * which move every second. Broadcasting every machine's devices to every open
+   * tab would scale with nodes times tabs, so a client asks for the one it is
+   * showing and gets that node's detail alone.
+   */
+  watching: string | null;
 }
 
 export interface LiveGatewayDeps {
@@ -85,16 +94,24 @@ export class LiveGateway {
       return;
     }
 
-    const client: Client = { socket, sessionId: claims.sid, alive: true };
+    const client: Client = { socket, sessionId: claims.sid, alive: true, watching: null };
     this.#clients.add(client);
 
     socket.on('pong', () => {
       client.alive = true;
     });
     socket.on('message', (raw) => {
-      // The client answers the application-level ping below. Anything else it
-      // sends is ignored: this socket is one-directional by design.
-      if (String(raw).includes('pong')) client.alive = true;
+      const text = String(raw);
+      // The client answers the application-level ping below.
+      if (text.includes('pong')) {
+        client.alive = true;
+        return;
+      }
+
+      // The only thing a client may ask for: which node's devices to include.
+      // Anything else is ignored — this socket is otherwise one-directional.
+      const asked = watchRequest(text);
+      if (asked !== undefined) client.watching = asked;
     });
     socket.on('close', () => this.#clients.delete(client));
     socket.on('error', () => this.#clients.delete(client));
@@ -104,7 +121,11 @@ export class LiveGateway {
     if (this.#clients.size === 0) return;
 
     const now = this.#deps.now();
-    const frame = frameMetrics(this.#deps.cache.current(now), now);
+    const nodes = this.#deps.cache.current(now);
+    const shared = frameMetrics(nodes, now);
+    // Watchers of the same node share one serialization, so a room full of
+    // tabs on one machine costs what a single tab costs.
+    const byNode = new Map<string, string>();
 
     for (const client of [...this.#clients]) {
       // Re-checked per push, not per connection: this frame carries data.
@@ -115,9 +136,21 @@ export class LiveGateway {
         continue;
       }
 
-      if (client.socket.readyState === client.socket.OPEN) {
-        client.socket.send(frame.json);
+      if (client.socket.readyState !== client.socket.OPEN) continue;
+
+      const watching = client.watching;
+      if (watching === null) {
+        client.socket.send(shared.json);
+        continue;
       }
+
+      let json = byNode.get(watching);
+      if (json === undefined) {
+        const detail = this.#deps.cache.detailFor(watching, now);
+        json = frameMetrics(nodes, now, detail ? { node: watching, ...detail } : null).json;
+        byNode.set(watching, json);
+      }
+      client.socket.send(json);
     }
   }
 
@@ -158,5 +191,24 @@ export class LiveGateway {
       if (!this.#server) return resolve();
       this.#server.close(() => resolve());
     });
+  }
+}
+
+/**
+ * A watch request, or undefined for anything else the client sent.
+ *
+ * Returns null for a client that asked to stop watching, which is how a node
+ * screen releases its node when the reader navigates away.
+ */
+function watchRequest(text: string): string | null | undefined {
+  if (!text.includes('watch')) return undefined;
+
+  try {
+    const message = JSON.parse(text) as { type?: unknown; node?: unknown };
+    if (message.type !== 'watch') return undefined;
+    if (typeof message.node === 'string' && message.node.length <= 253) return message.node;
+    return message.node === null ? null : undefined;
+  } catch {
+    return undefined;
   }
 }

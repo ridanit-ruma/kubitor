@@ -55,6 +55,28 @@ describe('frameMetrics', () => {
   });
 });
 
+/** The summary half of an agent reading; the detail travels beside it. */
+function hostMetrics(sampledAt: number) {
+  return {
+    sampledAt,
+    cpuPercent: 5,
+    cpuMhzAverage: 900,
+    cpuMhzMax: 4400,
+    cpuCores: 12,
+    load1: 0.5,
+    memTotalBytes: 1024,
+    memUsedBytes: 512,
+    memAvailableBytes: 512,
+    memPercent: 50,
+    swapTotalBytes: 0,
+    swapUsedBytes: 0,
+    gpuMhz: 300,
+    netRxBytesPerSecond: 1024,
+    netTxBytesPerSecond: 512,
+    hottestCelsius: 45,
+  };
+}
+
 describe('LiveGateway', () => {
   let harness: TestApp;
   let gateway: LiveGateway;
@@ -103,6 +125,21 @@ describe('LiveGateway', () => {
   function firstMessage(socket: WebSocket): Promise<unknown> {
     return new Promise((resolve, reject) => {
       socket.once('message', (data) => resolve(JSON.parse(String(data))));
+      socket.once('close', (code) => reject(new Error(`closed ${code}`)));
+      socket.once('error', reject);
+    });
+  }
+
+  /** The next frame of a given topic, skipping the heartbeat and whatever is in flight. */
+  function nextMessage(socket: WebSocket, topic: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const onMessage = (data: unknown): void => {
+        const frame = JSON.parse(String(data)) as { topic: string };
+        if (frame.topic !== topic) return;
+        socket.off('message', onMessage);
+        resolve(frame);
+      };
+      socket.on('message', onMessage);
       socket.once('close', (code) => reject(new Error(`closed ${code}`)));
       socket.once('error', reject);
     });
@@ -157,6 +194,84 @@ describe('LiveGateway', () => {
     ]);
 
     expect(code).toBe(4401);
+  });
+
+  /**
+   * Sensors, interface rates and disk throughput move every second. They used
+   * to reach the browser through a snapshot the server rewrites every fifteen,
+   * so a card's heading counted up while the list under it held still.
+   */
+  it("adds a node's devices to the frame for a client that asks for them", async () => {
+    const now = Date.now();
+    cache.record({
+      node: 'ken',
+      at: now,
+      cpuNanoCores: 1,
+      memoryWorkingSetBytes: 1,
+      fsUsedBytes: 1,
+      fsCapacityBytes: 2,
+      networkRxBytes: 1,
+      networkTxBytes: 1,
+    });
+    cache.recordHost('ken', hostMetrics(now), {
+      sampledAt: now,
+      sensors: [{ chip: 'coretemp', device: null, label: 'Package id 0', celsius: 45 }],
+      nics: [{ name: 'enp3s0', rxBytesPerSecond: 1024 }],
+      blockDevices: [{ name: 'nvme0n1', readBytesPerSecond: 2048 }],
+      gpus: [{ card: 'card0', mhzCur: 300 }],
+    });
+
+    const socket = connect(cookie);
+    await firstMessage(socket);
+    socket.send(JSON.stringify({ type: 'watch', node: 'ken' }));
+
+    const frame = (await nextMessage(socket, 'metrics.current')) as {
+      detail?: { node: string; sensors: { celsius: number }[] };
+    };
+
+    expect(frame.detail?.node).toBe('ken');
+    expect(frame.detail?.sensors[0]?.celsius).toBe(45);
+    socket.close();
+  });
+
+  /** A hundred-node cluster must not push every sensor to every open tab. */
+  it('sends no devices to a client that asked for none', async () => {
+    const now = Date.now();
+    cache.record({
+      node: 'ken',
+      at: now,
+      cpuNanoCores: 1,
+      memoryWorkingSetBytes: 1,
+      fsUsedBytes: 1,
+      fsCapacityBytes: 2,
+      networkRxBytes: 1,
+      networkTxBytes: 1,
+    });
+    cache.recordHost('ken', hostMetrics(now), {
+      sampledAt: now,
+      sensors: [{ chip: 'coretemp', device: null, label: 'Package id 0', celsius: 45 }],
+      nics: [],
+      blockDevices: [],
+      gpus: [],
+    });
+
+    const socket = connect(cookie);
+    const frame = (await firstMessage(socket)) as { detail?: unknown };
+
+    expect(frame.detail).toBeUndefined();
+    socket.close();
+  });
+
+  it('ignores a message that is not a watch request', async () => {
+    const socket = connect(cookie);
+    await firstMessage(socket);
+
+    socket.send('watch this: not json');
+    socket.send(JSON.stringify({ type: 'watch', node: 42 }));
+
+    const frame = (await nextMessage(socket, 'metrics.current')) as { detail?: unknown };
+    expect(frame.detail).toBeUndefined();
+    socket.close();
   });
 
   it('tracks its open connections', async () => {

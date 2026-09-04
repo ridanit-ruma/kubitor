@@ -33,7 +33,9 @@ export default function NodeDetailPage() {
   const params = useParams<{ name: string }>();
   const name = decodeURIComponent(params.name);
 
-  const live = useLiveMetrics();
+  // Watching this node adds its sensors, interfaces and drives to every push,
+  // so what moves every second on the machine moves every second on screen.
+  const live = useLiveMetrics(name);
   const now = useNow();
   const [minutes, setMinutes] = useState<number>(DEFAULT_RANGE_MINUTES);
   const [points, setPoints] = useState<SeriesPoint[]>([]);
@@ -130,8 +132,15 @@ export default function NodeDetailPage() {
       ? hostPoints.map((point) => ({ at: point.at, value: point.netTxBytesPerSecond }))
       : rates.map((point) => ({ at: point.at, value: point.netTxBytesPerSecond }));
 
-  const sensors = resources?.sensors ?? [];
-  const blockDevices = resources?.block_devices ?? [];
+  // The socket where it is connected, the stored snapshot where it is not. The
+  // snapshot is up to half a minute old — written every fifteen seconds and
+  // read every fifteen — which is what made a temperature sit still while the
+  // CPU figure above it moved.
+  const detail = live.detail?.node === name ? live.detail : null;
+  const sensors = detail?.sensors ?? resources?.sensors ?? [];
+  const blockDevices = detail?.blockDevices ?? resources?.block_devices ?? [];
+  const nics = detail?.nics ?? resources?.nics ?? [];
+  const gpus = detail?.gpus ?? resources?.gpus ?? [];
   const filesystems = mountedFilesystems(resources?.disks ?? [], current ?? null);
 
   return (
@@ -177,14 +186,14 @@ export default function NodeDetailPage() {
         <Network
           rxBytesPerSecond={host?.netRxBytesPerSecond ?? current?.netRxBytesPerSecond ?? null}
           txBytesPerSecond={host?.netTxBytesPerSecond ?? current?.netTxBytesPerSecond ?? null}
-          nics={resources?.nics ?? []}
+          nics={nics}
         />
 
         {(blockDevices.length > 0 || filesystems.length > 0) && (
           <Storage devices={blockDevices} filesystems={filesystems} sensors={sensors} />
         )}
 
-        {(resources?.gpus.length ?? 0) > 0 && <Graphics gpus={resources?.gpus ?? []} />}
+        {gpus.length > 0 && <Graphics gpus={gpus} />}
 
         <OtherSensors sensors={sensors} blockDevices={blockDevices.map((device) => device.name)} />
 

@@ -1,13 +1,22 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { api, type LiveNodeMetrics } from './api';
+import { api, type LiveHostDetail, type LiveNodeMetrics } from './api';
 
 export interface LiveState {
   nodes: LiveNodeMetrics[];
   /** When the newest reading was taken by its source — not when it arrived. */
   sampledAt: number | null;
   connected: boolean;
+  /**
+   * Per-device readings for the node this hook was asked to watch.
+   *
+   * Sensors, interface throughput and disk throughput belong here rather than
+   * in the stored snapshot: they change every second, and reaching a screen
+   * through a row rewritten every fifteen made them look frozen next to
+   * figures that moved.
+   */
+  detail: LiveHostDetail | null;
 }
 
 interface Frame {
@@ -15,6 +24,7 @@ interface Frame {
   sampledAt?: number | null;
   generatedAt: number;
   nodes?: LiveNodeMetrics[];
+  detail?: LiveHostDetail;
   signalOnly?: true;
 }
 
@@ -40,13 +50,15 @@ const FALLBACK_POLL_MS = [2000, 5000, 15_000];
  * Everything stops while the tab is hidden. A dashboard left open on a phone
  * would otherwise poll all night for a screen nobody is looking at.
  */
-export function useLiveMetrics(): LiveState {
+export function useLiveMetrics(watch?: string): LiveState {
   const [state, setState] = useState<LiveState>({
     nodes: [],
     sampledAt: null,
     connected: false,
+    detail: null,
   });
   const attempt = useRef(0);
+  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -63,6 +75,9 @@ export function useLiveMetrics(): LiveState {
           ...previous,
           nodes: current.nodes,
           sampledAt: newest(current.nodes),
+          // REST carries no per-device readings. Dropping them sends the node
+          // screen back to the stored snapshot, which is stale but honest.
+          detail: null,
         }));
       } catch {
         // Losing one poll is not worth surfacing; the age indicator already
@@ -96,6 +111,7 @@ export function useLiveMetrics(): LiveState {
 
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       socket = new WebSocket(`${protocol}://${window.location.host}/api/ws`);
+      socketRef.current = socket;
 
       socket.onopen = () => {
         attempt.current = 0;
@@ -121,11 +137,16 @@ export function useLiveMetrics(): LiveState {
           return;
         }
 
-        setState({
+        setState((previous) => ({
+          ...previous,
           nodes: frame.nodes ?? [],
           sampledAt: frame.sampledAt ?? null,
           connected: true,
-        });
+          // A frame with no detail is one for a client watching nothing, or a
+          // node whose agent has gone quiet; either way the last detail is no
+          // longer current and must not stay on screen.
+          detail: frame.detail ?? null,
+        }));
       };
 
       const retry = (): void => {
@@ -161,6 +182,7 @@ export function useLiveMetrics(): LiveState {
 
     return () => {
       disposed = true;
+      socketRef.current = null;
       document.removeEventListener('visibilitychange', onVisibility);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       stopPolling();
@@ -172,6 +194,15 @@ export function useLiveMetrics(): LiveState {
       }
     };
   }, []);
+
+  // Asked for on the open socket rather than at connect time, so moving
+  // between nodes does not tear down and rebuild the connection. Re-sent
+  // whenever the socket comes back, because the server holds this per client.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!state.connected || !socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: 'watch', node: watch ?? null }));
+  }, [watch, state.connected]);
 
   return state;
 }
