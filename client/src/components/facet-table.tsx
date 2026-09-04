@@ -47,10 +47,11 @@ function withFixed(
  * sideways: a table that scrolls horizontally hides data behind a gesture
  * nobody performs. What disappears stays reachable on the row's detail page.
  */
-export type ColumnPriority = 'always' | 'md' | 'lg' | 'xl';
+export type ColumnPriority = 'always' | 'sm' | 'md' | 'lg' | 'xl';
 
 const PRIORITY_CLASS: Record<ColumnPriority, string> = {
   always: '',
+  sm: 'hidden sm:table-cell',
   md: 'hidden md:table-cell',
   lg: 'hidden lg:table-cell',
   xl: 'hidden xl:table-cell',
@@ -308,7 +309,9 @@ export function FacetTable<Row extends Record<string, unknown>>({
                     PRIORITY_CLASS[column.priority ?? 'always'],
                     column.align === 'right' && 'text-right',
                     column.width,
-                    'font-mono text-[11px] uppercase tracking-[0.1em]',
+                    // Headers truncate for the same reason cells do: a heading
+                    // that refuses to wrap is enough to push the table sideways.
+                    'max-w-0 truncate font-mono text-[11px] uppercase tracking-[0.1em]',
                   )}
                 >
                   {column.header}

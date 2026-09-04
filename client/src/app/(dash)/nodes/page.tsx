@@ -21,7 +21,7 @@ const columns: Column<NodeRow>[] = [
   {
     key: 'ready',
     header: 'State',
-    width: 'w-[10%]',
+    width: 'w-[28%] sm:w-[10%]',
     render: (row) =>
       row.ready === 1 ? (
         <Badge variant="secondary">Ready</Badge>
@@ -42,6 +42,7 @@ const columns: Column<NodeRow>[] = [
     key: 'capacity_cpu_milli',
     header: 'CPU',
     width: 'w-[10%]',
+    priority: 'sm',
     align: 'right',
     render: (row) => formatCpu(row.capacity_cpu_milli),
   },
@@ -49,6 +50,7 @@ const columns: Column<NodeRow>[] = [
     key: 'capacity_memory_bytes',
     header: 'Memory',
     width: 'w-[12%]',
+    priority: 'sm',
     align: 'right',
     render: (row) => formatBytes(row.capacity_memory_bytes),
   },

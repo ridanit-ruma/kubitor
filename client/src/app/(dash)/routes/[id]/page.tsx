@@ -197,11 +197,11 @@ export default function RouteDetailPage() {
             <Table className="mt-2 table-fixed">
               <TableHeader>
                 <TableRow>
-                  <Head className="w-[22%]">When</Head>
-                  <Head className="w-[12%]">Status</Head>
-                  <Head className="w-[12%]">Method</Head>
-                  <Head className="w-[34%]">Path</Head>
-                  <Head className="w-[20%] text-right">Took</Head>
+                  <Head className="w-[34%] sm:w-[22%]">When</Head>
+                  <Head className="w-[22%] sm:w-[12%]">Status</Head>
+                  <Head className="hidden w-[12%] sm:table-cell">Method</Head>
+                  <Head>Path</Head>
+                  <Head className="hidden w-[20%] text-right sm:table-cell">Took</Head>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -213,11 +213,11 @@ export default function RouteDetailPage() {
                     <TableCell className="max-w-0 truncate">
                       <Badge variant={statusTone(row.status)}>{row.status}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-0 truncate font-mono text-xs">
+                    <TableCell className="hidden max-w-0 truncate font-mono text-xs sm:table-cell">
                       {row.method}
                     </TableCell>
                     <TableCell className="max-w-0 truncate font-mono text-xs">{row.path}</TableCell>
-                    <TableCell className="max-w-0 truncate text-right font-mono text-xs tabular">
+                    <TableCell className="hidden max-w-0 truncate text-right font-mono text-xs tabular sm:table-cell">
                       {formatDuration(row.duration_ms)}
                       {row.bytes_out !== null && (
                         <span className="ml-2 text-muted-foreground">
@@ -249,7 +249,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Head({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <TableHead className={`font-mono text-[11px] uppercase tracking-[0.1em] ${className ?? ''}`}>
+    <TableHead
+      className={`max-w-0 truncate font-mono text-[11px] uppercase tracking-[0.1em] ${className ?? ''}`}
+    >
       {children}
     </TableHead>
   );

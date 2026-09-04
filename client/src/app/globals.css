@@ -190,7 +190,14 @@
  * scrolling differently from the next.
  */
 @utility pane {
-  overflow: visible;
+  /*
+   * `clip` rather than `hidden`: hiding one axis turns the other into a scroll
+   * container, which on a phone would take the page's own scrolling away and
+   * leave a sticky table header with nothing to stick to. `clip` cuts what
+   * overflows sideways and leaves vertical flow exactly as it was.
+   */
+  overflow-x: clip;
+  overflow-y: visible;
 
   @media (width >= 48rem) {
     min-height: 0;

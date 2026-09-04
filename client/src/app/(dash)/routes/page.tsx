@@ -33,6 +33,7 @@ const columns: Column<RouteRow>[] = [
     key: 'service',
     header: 'Backend',
     width: 'w-[24%]',
+    priority: 'sm',
     render: (row) => (
       <span className="font-mono text-xs">
         {row.service}
@@ -43,7 +44,7 @@ const columns: Column<RouteRow>[] = [
   {
     key: 'tls',
     header: 'TLS',
-    width: 'w-[10%]',
+    width: 'w-[22%] sm:w-[10%]',
     render: (row) =>
       row.tls === 1 ? (
         <Badge variant="secondary">TLS</Badge>

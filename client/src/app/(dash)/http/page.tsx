@@ -28,19 +28,20 @@ const columns: Column<AccessRow>[] = [
   {
     key: 'at',
     header: 'When',
-    width: 'w-[15%]',
+    width: 'w-[26%] sm:w-[15%]',
     render: (row) => <span className="font-mono text-xs">{formatTimestamp(row.at)}</span>,
   },
   {
     key: 'status',
     header: 'Status',
-    width: 'w-[9%]',
+    width: 'w-[16%] sm:w-[9%]',
     render: (row) => <Badge variant={statusTone(row.status)}>{row.status}</Badge>,
   },
   {
     key: 'method',
     header: 'Method',
     width: 'w-[9%]',
+    priority: 'sm',
     render: (row) => <span className="font-mono text-xs">{row.method}</span>,
   },
   {

@@ -21,7 +21,7 @@ const columns: Column<TraefikRouteRow>[] = [
   {
     key: 'name',
     header: 'Router',
-    width: 'w-[26%]',
+    width: 'w-[38%] sm:w-[26%]',
     render: (row) => (
       <span className="font-mono text-xs">
         {row.name}
@@ -51,6 +51,7 @@ const columns: Column<TraefikRouteRow>[] = [
     key: 'kind',
     header: 'Declared as',
     width: 'w-[16%]',
+    priority: 'sm',
     render: (row) => (
       <Badge variant={row.kind === 'IngressRoute' ? 'secondary' : 'outline'}>{row.kind}</Badge>
     ),

@@ -4,9 +4,20 @@ import type * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * The container does not scroll.
+ *
+ * shadcn wraps a table in `overflow-x-auto`, which is the right default for a
+ * component library and the wrong one here: a cell whose text will not wrap
+ * turns the box into a horizontal scroller, and the columns a reader needs
+ * leave the screen behind a gesture nobody performs. Tables in kubitor are
+ * fixed-layout with truncating cells, and what gets cut is on the row's own
+ * detail. Leaving the box visible also hands vertical scrolling back to the
+ * page's own scroll region, which is what a sticky header sticks to.
+ */
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div data-slot="table-container" className="relative w-full min-w-0">
       <table
         data-slot="table"
         className={cn('w-full caption-bottom text-sm', className)}

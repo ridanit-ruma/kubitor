@@ -23,6 +23,7 @@ const columns: Column<WorkloadRow>[] = [
     key: 'namespace',
     header: 'Namespace',
     width: 'w-[15%]',
+    priority: 'sm',
     render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
   },
   {
@@ -35,7 +36,7 @@ const columns: Column<WorkloadRow>[] = [
   {
     key: 'phase',
     header: 'Phase',
-    width: 'w-[11%]',
+    width: 'w-[28%] sm:w-[11%]',
     render: (row) => (
       <Badge variant={row.phase === 'Running' && row.ready === 1 ? 'secondary' : 'outline'}>
         {row.phase}

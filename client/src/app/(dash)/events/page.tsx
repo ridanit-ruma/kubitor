@@ -19,13 +19,14 @@ const columns: Column<EventRow>[] = [
   {
     key: 'at',
     header: 'When',
-    width: 'w-[16%]',
+    width: 'w-[30%] sm:w-[16%]',
     render: (row) => <span className="font-mono text-xs">{formatTimestamp(row.at)}</span>,
   },
   {
     key: 'type',
     header: 'Type',
     width: 'w-[10%]',
+    priority: 'sm',
     render: (row) => (
       <Badge variant={row.type === 'Warning' ? 'destructive' : 'secondary'}>{row.type}</Badge>
     ),
@@ -56,7 +57,14 @@ const columns: Column<EventRow>[] = [
     priority: 'xl',
     render: (row) => <span className="text-xs text-muted-foreground">{row.message}</span>,
   },
-  { key: 'count', header: 'Count', align: 'right', render: (row) => formatCount(row.count) },
+  {
+    key: 'count',
+    header: 'Count',
+    width: 'w-[9%]',
+    priority: 'sm',
+    align: 'right',
+    render: (row) => formatCount(row.count),
+  },
 ];
 
 export default function EventsPage() {

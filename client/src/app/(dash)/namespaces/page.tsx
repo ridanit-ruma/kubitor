@@ -58,19 +58,19 @@ export default function NamespacesPage() {
       <h1 className="text-lg font-semibold tracking-tight">Namespaces</h1>
 
       <div className="pane rounded-lg border border-line">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
-              <TableHead className="font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="truncate font-mono text-[11px] uppercase tracking-[0.1em]">
                 Namespace
               </TableHead>
-              <TableHead className="text-right font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[18%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[14%]">
                 Pods
               </TableHead>
-              <TableHead className="text-right font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[26%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[16%]">
                 Not ready
               </TableHead>
-              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
+              <TableHead className="hidden w-[16%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
                 Restarts
               </TableHead>
             </TableRow>
@@ -85,7 +85,7 @@ export default function NamespacesPage() {
             )}
             {rows.map((row) => (
               <TableRow key={row.namespace}>
-                <TableCell>
+                <TableCell className="max-w-0 truncate">
                   <Link
                     href={`/workloads?namespace=${encodeURIComponent(row.namespace)}`}
                     className="font-mono text-sm underline-offset-4 hover:underline"

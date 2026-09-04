@@ -67,19 +67,19 @@ export default function AccountsPage() {
       </p>
 
       <div className="pane rounded-lg border border-line">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
-              <TableHead className="font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="truncate font-mono text-[11px] uppercase tracking-[0.1em]">
                 Username
               </TableHead>
-              <TableHead className="font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[34%] truncate font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[22%]">
                 State
               </TableHead>
-              <TableHead className="hidden font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
+              <TableHead className="hidden w-[22%] truncate font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
                 Created
               </TableHead>
-              <TableHead className="text-right font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[26%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:w-[34%]">
                 Actions
               </TableHead>
             </TableRow>
@@ -87,8 +87,8 @@ export default function AccountsPage() {
           <TableBody>
             {accounts.map((account) => (
               <TableRow key={account.id}>
-                <TableCell className="font-medium">{account.username}</TableCell>
-                <TableCell>
+                <TableCell className="max-w-0 truncate font-medium">{account.username}</TableCell>
+                <TableCell className="max-w-0 truncate">
                   {account.mustChangePassword ? (
                     <Badge variant="outline" className="border-blind text-blind">
                       Password not set
@@ -97,7 +97,7 @@ export default function AccountsPage() {
                     <Badge variant="secondary">Active</Badge>
                   )}
                 </TableCell>
-                <TableCell className="hidden font-mono text-xs text-muted-foreground md:table-cell">
+                <TableCell className="hidden max-w-0 truncate font-mono text-xs text-muted-foreground md:table-cell">
                   {formatTimestamp(account.createdAt)}
                 </TableCell>
                 <TableCell className="text-right">
