@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Age } from '@/components/age';
+import { Disks, Interfaces, Memory, Processor } from '@/components/machine';
 import { Bar, ResourceCard } from '@/components/resource-card';
 import { Series } from '@/components/series';
 import { Temperatures } from '@/components/temperatures';
@@ -153,11 +154,22 @@ export default function NodeDetailPage() {
             Network
           </p>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            {/*
+              Measured on the host once a second where the agent reports. The
+              kubelet re-reads the same counters every few seconds, so a rate
+              derived from it advances in visible steps.
+            */}
             <span className="font-mono text-xl font-medium tabular">
-              ↓ {formatBytesPerSecond(current?.netRxBytesPerSecond ?? null)}
+              ↓{' '}
+              {formatBytesPerSecond(
+                host?.netRxBytesPerSecond ?? current?.netRxBytesPerSecond ?? null,
+              )}
             </span>
             <span className="font-mono text-xl font-medium tabular">
-              ↑ {formatBytesPerSecond(current?.netTxBytesPerSecond ?? null)}
+              ↑{' '}
+              {formatBytesPerSecond(
+                host?.netTxBytesPerSecond ?? current?.netTxBytesPerSecond ?? null,
+              )}
             </span>
             <span className="text-xs text-muted-foreground">summed across physical interfaces</span>
           </div>
@@ -244,6 +256,24 @@ export default function NodeDetailPage() {
             format={(value) => formatBytesPerSecond(value)}
           />
         </div>
+
+        {resources && (
+          <div className="flex flex-col gap-3">
+            {resources.cpu && <Processor cpu={resources.cpu} />}
+
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {resources.memory_modules.length > 0 && (
+                <Memory
+                  modules={resources.memory_modules}
+                  totalBytes={host?.memTotalBytes ?? resources.mem_total_bytes}
+                />
+              )}
+              {resources.nics.length > 0 && <Interfaces nics={resources.nics} />}
+            </div>
+
+            {resources.block_devices.length > 0 && <Disks devices={resources.block_devices} />}
+          </div>
+        )}
 
         {!host && (
           <p className="pb-1 text-xs text-muted-foreground">

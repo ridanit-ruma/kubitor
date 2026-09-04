@@ -140,6 +140,8 @@ export interface LiveHostMetrics {
   swapTotalBytes: number | null;
   swapUsedBytes: number | null;
   gpuMhz: number | null;
+  netRxBytesPerSecond: number | null;
+  netTxBytesPerSecond: number | null;
   hottestCelsius: number | null;
 }
 
@@ -147,6 +149,9 @@ export interface GpuInfo {
   card: string;
   driver: string | null;
   pciId: string | null;
+  vendor: string | null;
+  linkSpeed: string | null;
+  linkWidth: number | null;
   mhzCur: number | null;
   mhzMax: number | null;
   memMhzCur: number | null;
@@ -164,6 +169,62 @@ export interface DiskInfo {
   fsType: string;
   totalBytes: number;
   usedBytes: number;
+}
+
+export interface CpuCache {
+  level: number;
+  type: string;
+  sizeBytes: number;
+}
+
+export interface CpuDetail {
+  vendor: string | null;
+  model: string | null;
+  sockets: number | null;
+  coresPerSocket: number | null;
+  threads: number | null;
+  family: number | null;
+  modelNumber: number | null;
+  stepping: number | null;
+  microcode: string | null;
+  governor: string | null;
+  features: string[];
+  caches: CpuCache[];
+}
+
+export interface MemoryModule {
+  slot: string;
+  sizeBytes: number;
+  type: string | null;
+  width: string | null;
+}
+
+export interface NicInfo {
+  name: string;
+  speedMbps: number | null;
+  mtu: number | null;
+  state: string | null;
+  macAddress: string | null;
+  rxBytesPerSecond: number | null;
+  txBytesPerSecond: number | null;
+  rxErrors: number;
+  txErrors: number;
+  rxDropped: number;
+  txDropped: number;
+}
+
+export interface BlockDevice {
+  name: string;
+  model: string | null;
+  sizeBytes: number | null;
+  rotational: boolean | null;
+  linkSpeed: string | null;
+  linkWidth: number | null;
+  schedulerQueue: string | null;
+  readBytesPerSecond: number | null;
+  writeBytesPerSecond: number | null;
+  readsPerSecond: number | null;
+  writesPerSecond: number | null;
 }
 
 export interface HostResourcesRow extends Record<string, unknown> {
@@ -185,6 +246,10 @@ export interface HostResourcesRow extends Record<string, unknown> {
   swap_used_bytes: number | null;
   gpus: GpuInfo[];
   disks: DiskInfo[];
+  cpu: CpuDetail | null;
+  memory_modules: MemoryModule[];
+  nics: NicInfo[];
+  block_devices: BlockDevice[];
 }
 
 export interface SeriesPoint {
