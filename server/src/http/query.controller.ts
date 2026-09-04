@@ -11,7 +11,7 @@ import {
 import type { Response } from 'express';
 import { z } from 'zod';
 import type { LiveCache, LiveNodeMetrics } from '../collect/live-cache.js';
-import type { NodeSamplesRepo, SeriesPoint } from '../db/node-samples.repo.js';
+import type { HostSeriesPoint, NodeSamplesRepo, SeriesPoint } from '../db/node-samples.repo.js';
 import { counterRate } from '../kube/rates.js';
 import { csvRow } from '../query/csv.js';
 import type { FacetQuery, QueryFilters } from '../query/facet-query.js';
@@ -42,6 +42,31 @@ export const MAX_SERIES_MINUTES = 7 * 24 * 60;
 const seriesQuery = z.object({
   minutes: z.coerce.number().int().min(1).max(MAX_SERIES_MINUTES).default(60),
 });
+
+/**
+ * How many points a chart is worth drawing.
+ *
+ * A line is six hundred pixels wide at most. Beyond roughly one point per two
+ * pixels the extra samples land on pixels that are already inked: the chart
+ * gets slower and noisier without saying anything more.
+ */
+export const MAX_SERIES_POINTS = 480;
+
+/** How often a reading reaches the database. Nothing finer exists to return. */
+export const STORE_INTERVAL_MS = 15_000;
+
+/**
+ * The bucket a window needs, or zero where the stored samples are few enough.
+ *
+ * Rounding up to a whole number of storage intervals keeps every bucket holding
+ * the same number of readings, so one bucket is never an average of two samples
+ * next to a bucket that averaged three.
+ */
+export function bucketWidthFor(spanMs: number): number {
+  const ideal = spanMs / MAX_SERIES_POINTS;
+  if (ideal <= STORE_INTERVAL_MS) return 0;
+  return Math.ceil(ideal / STORE_INTERVAL_MS) * STORE_INTERVAL_MS;
+}
 
 const FACET_BY_PATH: Record<string, string> = {
   nodes: 'nodes',
@@ -92,15 +117,25 @@ export class QueryController {
   async series(
     @Param('name') name: string,
     @Query() query: Record<string, string>,
-  ): Promise<{ node: string; points: SeriesPoint[]; rates: RatePoint[] }> {
+  ): Promise<{ node: string; points: SeriesPoint[]; rates: RatePoint[]; host: HostSeriesPoint[] }> {
     const parsed = seriesQuery.safeParse(query);
     if (!parsed.success) throw new BadRequestException({ error: 'invalid_query' });
 
     const until = Date.now();
-    const since = until - parsed.data.minutes * 60_000;
-    const points = await this.#samples.series(name, since, until);
+    const spanMs = parsed.data.minutes * 60_000;
+    const since = until - spanMs;
+    const width = bucketWidthFor(spanMs);
 
-    return { node: name, points, rates: toRates(points) };
+    // Both sources, because only the screen knows whether this node runs an
+    // agent — and it should not have to ask twice to find out.
+    const [points, host] = await Promise.all([
+      width === 0
+        ? this.#samples.series(name, since, until)
+        : this.#samples.bucketed(name, since, until, width),
+      this.#samples.hostSeries(name, since, until, width),
+    ]);
+
+    return { node: name, points, rates: toRates(points), host };
   }
 
   /**
