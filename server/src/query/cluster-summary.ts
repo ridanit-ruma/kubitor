@@ -38,6 +38,16 @@ export const WARNING_WINDOW_MS = 3_600_000;
 /** How many distinct failure reasons are worth naming before "and others". */
 const MAX_REASONS = 4;
 
+/**
+ * States a pod passes through on its way to running.
+ *
+ * `kubectl` prints these in its STATUS column and so does the workloads screen,
+ * because they are what the pod is doing. They are left out of the list of
+ * things asking for attention: every deployment rolls through them, and a
+ * summary that lit up on every rollout would be one nobody reads.
+ */
+const BENIGN_REASONS = ['ContainerCreating', 'PodInitializing'];
+
 export async function clusterSummary(db: Kysely<Database>, now: number): Promise<ClusterSummary> {
   const [nodes, phases, degraded, reasons, warnings] = await Promise.all([
     db
@@ -69,6 +79,7 @@ export async function clusterSummary(db: Kysely<Database>, now: number): Promise
       .select((eb) => ['reason', eb.fn.countAll<number>().as('count')])
       .where('reason', 'is not', null)
       .where('reason', '!=', '')
+      .where('reason', 'not in', BENIGN_REASONS)
       .groupBy('reason')
       .orderBy('count', 'desc')
       .limit(MAX_REASONS)

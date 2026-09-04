@@ -22,6 +22,8 @@ const PODS: Pod[] = [
   { name: 'api-1', phase: 'Pending', ready: 0, reason: 'CrashLoopBackOff' },
   { name: 'api-2', phase: 'Pending', ready: 0, reason: 'CrashLoopBackOff' },
   { name: 'sidecar', phase: 'Pending', ready: 0, reason: 'ImagePullBackOff' },
+  // On its way up, which is not a fault and must not be listed as one.
+  { name: 'starting', phase: 'Pending', ready: 0, reason: 'ContainerCreating' },
   { name: 'gone', phase: 'Failed', ready: 0 },
 ];
 
@@ -104,9 +106,9 @@ describeEachDialect('clusterSummary', (ctx) => {
   it('counts pods by the phase they are in', async () => {
     const summary = await clusterSummary(ctx.db, NOW);
 
-    expect(summary.pods.total).toBe(8);
+    expect(summary.pods.total).toBe(9);
     expect(summary.pods.running).toBe(3);
-    expect(summary.pods.pending).toBe(3);
+    expect(summary.pods.pending).toBe(4);
     expect(summary.pods.succeeded).toBe(1);
     expect(summary.pods.failed).toBe(1);
   });
@@ -121,6 +123,12 @@ describeEachDialect('clusterSummary', (ctx) => {
 
     expect(troubled[0]).toEqual({ reason: 'CrashLoopBackOff', count: 2 });
     expect(troubled[1]).toEqual({ reason: 'ImagePullBackOff', count: 1 });
+  });
+
+  /** Every rollout passes through these; a summary that lit up on them is noise. */
+  it('leaves the states a healthy pod passes through out of the list', async () => {
+    const { troubled } = (await clusterSummary(ctx.db, NOW)).pods;
+    expect(troubled.map((row) => row.reason)).not.toContain('ContainerCreating');
   });
 
   it('sums what the nodes declare they have', async () => {
@@ -141,6 +149,6 @@ describeEachDialect('clusterSummary', (ctx) => {
 
     expect(later.warnings).toBe(0);
     // The rest of the cluster is state, not history: it does not age.
-    expect(later.pods.total).toBe(8);
+    expect(later.pods.total).toBe(9);
   });
 });

@@ -102,7 +102,7 @@ export class KubeClient implements KubeApi {
         name: pod.metadata?.name ?? '',
         node: pod.spec?.nodeName ?? null,
         phase: pod.status?.phase ?? 'Unknown',
-        reason: waitingReason(pod.status?.phase ?? null, statuses),
+        reason: waitingReason(pod.status?.phase ?? null, statuses, pod.status?.conditions ?? []),
         ready: statuses.length > 0 && statuses.every((status) => status.ready),
         restarts: statuses.reduce((total, status) => total + (status.restartCount ?? 0), 0),
         images: (pod.spec?.containers ?? []).map((container) => container.image ?? ''),
@@ -302,6 +302,7 @@ export function waitingReason(
   statuses: readonly {
     state?: { waiting?: { reason?: string }; terminated?: { reason?: string } };
   }[],
+  conditions: readonly { type?: string; status?: string; reason?: string }[] = [],
 ): string | null {
   if (phase === 'Succeeded') return null;
 
@@ -316,6 +317,14 @@ export function waitingReason(
     // an init container doing its job, not a fault.
     if (terminated && terminated !== 'Completed') return terminated;
   }
+
+  // A pod the scheduler could not place has no containers at all, so nothing
+  // above can speak for it — and `Pending` on its own is exactly the answer
+  // that sends an operator to `kubectl describe`. The scheduler's own word for
+  // it is `Unschedulable`, and it is only set once placement has actually
+  // failed, never while a pod is merely waiting its turn.
+  const scheduled = conditions.find((condition) => condition.type === 'PodScheduled');
+  if (scheduled?.status === 'False' && scheduled.reason) return scheduled.reason;
 
   return null;
 }
