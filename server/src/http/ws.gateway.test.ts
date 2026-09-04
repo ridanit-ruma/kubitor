@@ -41,6 +41,17 @@ describe('frameMetrics', () => {
     expect(JSON.parse(frameMetrics([], 9000).json).sampledAt).toBeNull();
   });
 
+  /**
+   * The agent measures once a second, the kubelet every five. Dating the frame
+   * by the kubelet alone made a screen keyed on this number move in five-second
+   * steps while every figure in it was a second old.
+   */
+  it('dates the frame by the newest reading, not the slowest source', () => {
+    const node = { ...metrics('a', 1000), host: hostMetrics(4000) };
+
+    expect(JSON.parse(frameMetrics([node], 9000).json).sampledAt).toBe(4000);
+  });
+
   /** One enormous cluster must not turn every socket into a firehose. */
   it('degrades an oversized frame to an invalidation signal', () => {
     const many = Array.from({ length: 5000 }, (_, index) =>

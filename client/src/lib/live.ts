@@ -346,8 +346,18 @@ function sampleOf(node: LiveNodeMetrics): LiveSample {
   };
 }
 
+/**
+ * The newest reading among them, whichever source took it.
+ *
+ * The agent measures once a second and the kubelet every five, so taking the
+ * kubelet's instant for the whole frame dates every figure by the slowest one.
+ */
 function newest(nodes: readonly LiveNodeMetrics[]): number | null {
-  return nodes.length === 0 ? null : Math.max(...nodes.map((node) => node.sampledAt));
+  const times = nodes.flatMap((node) => [
+    node.sampledAt,
+    ...(node.host ? [node.host.sampledAt] : []),
+  ]);
+  return times.length === 0 ? null : Math.max(...times);
 }
 
 /** A clock that ticks so ages stay honest without any data arriving. */

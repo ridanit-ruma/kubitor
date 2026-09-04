@@ -36,7 +36,7 @@ export function frameMetrics(
   generatedAt: number,
   detail?: ({ node: string } & LiveHostDetail) | null,
 ): FramedResult {
-  const sampledAt = nodes.length === 0 ? null : Math.max(...nodes.map((n) => n.sampledAt));
+  const sampledAt = newestReading(nodes);
 
   const frame: LiveFrame = {
     topic: 'metrics.current',
@@ -53,4 +53,24 @@ export function frameMetrics(
     json: JSON.stringify({ topic: 'metrics.current', generatedAt, signalOnly: true }),
     degraded: true,
   };
+}
+
+/**
+ * When the newest thing in this frame was measured.
+ *
+ * Both sources count. The kubelet's instant alone is up to five seconds old
+ * while the agent's figures beside it are one second old, and a screen that
+ * keys its history on this number then advanced once every five seconds while
+ * claiming to move every second.
+ */
+function newestReading(nodes: readonly LiveNodeMetrics[]): number | null {
+  let newest: number | null = null;
+
+  for (const node of nodes) {
+    for (const at of [node.sampledAt, node.host?.sampledAt]) {
+      if (at !== undefined && (newest === null || at > newest)) newest = at;
+    }
+  }
+
+  return newest;
 }
