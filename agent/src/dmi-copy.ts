@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { DMI_TABLE } from './smbios.js';
 
@@ -22,11 +22,37 @@ import { DMI_TABLE } from './smbios.js';
  */
 const SOURCE = process.env.KUBITOR_DMI_SOURCE ?? '/host/dmi/DMI';
 
+/**
+ * World-readable, because the process that needs it is not this one.
+ *
+ * A plain copy carries the source's mode, and the source is 0400 owned by
+ * root — so the first version of this left the agent unable to read the file
+ * that had just been placed there for it. The table describes what is soldered
+ * to a board; it is not a secret, and the only readers are the containers of
+ * this pod.
+ */
+const READABLE = 0o444;
+
+/** Places the table where a process that is not root can read it. */
+export async function copyTable(source: string, destination: string): Promise<number> {
+  await mkdir(dirname(destination), { recursive: true });
+  const table = await readFile(source);
+  // The copy this leaves is read-only, and root without CAP_DAC_OVERRIDE — which
+  // this container drops along with every other — may not write to a read-only
+  // file it owns. On a pod whose containers restarted, the volume still holds
+  // the previous copy, so it goes before the new one is written.
+  await rm(destination, { force: true });
+  await writeFile(destination, table, { mode: READABLE });
+  // The mode argument applies only when the write creates the file, and this
+  // container runs again on every restart of the pod.
+  await chmod(destination, READABLE);
+  return table.length;
+}
+
 async function main(): Promise<void> {
   try {
-    await mkdir(dirname(DMI_TABLE), { recursive: true });
-    await copyFile(SOURCE, DMI_TABLE);
-    console.log(`kubitor: copied ${SOURCE} to ${DMI_TABLE}`);
+    const bytes = await copyTable(SOURCE, DMI_TABLE);
+    console.log(`kubitor: copied ${SOURCE} to ${DMI_TABLE} (${bytes} bytes)`);
   } catch (error) {
     // Every path here is survivable: no SMBIOS on this architecture, no mount,
     // or a kernel built without the DMI sysfs entries.
@@ -34,4 +60,5 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+// Entry point only when run as one: importing this for its copy must not copy.
+if (process.argv[1]?.endsWith('dmi-copy.js')) await main();

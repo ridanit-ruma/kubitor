@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, statfsSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readDisks } from './disks.js';
+import { copyTable } from './dmi-copy.js';
 import { readCpuDetail, readMemoryModules } from './hwinfo.js';
 
 function fixture(prefix: string): string {
@@ -169,5 +170,35 @@ describe('readDisks', () => {
     expect(disk?.availableBytes).toBeLessThanOrEqual(
       (disk?.totalBytes ?? 0) - (disk?.usedBytes ?? 0),
     );
+  });
+});
+
+describe('copyTable', () => {
+  /**
+   * The whole point of the copy is that a different, unprivileged process
+   * reads it. A plain `copyFile` carries the source's mode — 0400 owned by
+   * root — and the agent got EACCES on the file placed there for it.
+   */
+  it('leaves the table readable by the process that needs it', async () => {
+    const root = fixture('dmi');
+    const source = join(root, 'DMI');
+    writeFileSync(source, Buffer.from([17, 4, 0, 0, 0, 0]), { mode: 0o400 });
+    chmodSync(source, 0o400);
+
+    const destination = join(root, 'out', 'DMI');
+    expect(await copyTable(source, destination)).toBe(6);
+    expect(statSync(destination).mode & 0o444).toBe(0o444);
+  });
+
+  it('overwrites a copy left by an earlier run', async () => {
+    const root = fixture('dmi');
+    const source = join(root, 'DMI');
+    const destination = join(root, 'out', 'DMI');
+    writeFileSync(source, Buffer.from([1, 2, 3]));
+    await copyTable(source, destination);
+
+    writeFileSync(source, Buffer.from([1, 2, 3, 4]));
+    expect(await copyTable(source, destination)).toBe(4);
+    expect(statSync(destination).mode & 0o444).toBe(0o444);
   });
 });
