@@ -1,65 +1,120 @@
-import type { BlockDevice, CpuDetail, MemoryModule, NicInfo } from '@/lib/api';
-import { formatBytes, formatBytesPerSecond, formatCount } from '@/lib/format';
+import { Bar } from '@/components/resource-card';
+import type { BlockDevice, CpuDetail, DiskInfo, GpuInfo, MemoryModule, NicInfo } from '@/lib/api';
+import {
+  formatBytes,
+  formatBytesPerSecond,
+  formatCelsius,
+  formatCount,
+  formatMhz,
+  formatOfTotal,
+  formatPercent,
+} from '@/lib/format';
+import {
+  cpuSensors,
+  deviceSensors,
+  looseSensors,
+  type SensorReading,
+  type SensorSummary,
+  summarizeMemory,
+} from '@/lib/sensors';
 
 /**
- * What a machine is, as opposed to what it is doing.
+ * One machine, grouped the way a person asks about it.
  *
- * The figures above this on the node screen change every second; none of this
- * changes while the machine is running. It is here because "how much memory can
- * I still add" and "is that NVMe on four lanes or one" are questions about a
- * node, and until now they were answered by logging in.
+ * The load a part is under and the description of that part are the same
+ * subject, and separating them made a reader scroll between the temperature of
+ * a disk and the size of it. Each card below carries what a part is doing, what
+ * it is, and how hot it is.
  */
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  right,
+  children,
+  className,
+}: {
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <section className="rounded-lg border border-line bg-card px-4 py-3">
-      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-        {title}
-      </p>
+    <section className={`rounded-lg border border-line bg-card px-4 py-3 ${className ?? ''}`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {title}
+        </p>
+        {right}
+      </div>
       {children}
     </section>
   );
 }
 
-/** A run of short facts, separated rather than each given its own row. */
-function Facts({ items }: { items: readonly (string | null)[] }) {
-  const usable = items.filter((item): item is string => item !== null && item !== '');
+/** Short facts run together, because each one alone is not worth a line. */
+function Facts({ items }: { items: readonly (string | null | undefined)[] }) {
+  const usable = items.filter((item): item is string => !!item);
   if (usable.length === 0) return null;
 
   return <p className="mt-1 font-mono text-xs text-muted-foreground">{usable.join(' · ')}</p>;
 }
 
-export function Processor({ cpu }: { cpu: CpuDetail }) {
+function Temperature({ summary }: { summary: SensorSummary | null }) {
+  if (!summary) return null;
+
   return (
-    <Section title="Processor">
-      <p className="mt-1 text-sm">{cpu.model ?? 'Unknown model'}</p>
+    <span className="font-mono text-xs tabular">
+      {formatCelsius(summary.celsius)}
+      {summary.count > 1 && (
+        <span className="ml-2 text-muted-foreground">
+          {formatCelsius(summary.lowest)}–{formatCelsius(summary.highest)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function Processor({
+  cpu,
+  percent,
+  clockMhz,
+  clockMaxMhz,
+  loadPercent,
+  sensors,
+}: {
+  cpu: CpuDetail | null;
+  percent: number | null;
+  clockMhz: number | null;
+  clockMaxMhz: number | null;
+  loadPercent: number | null;
+  sensors: readonly SensorReading[];
+}) {
+  return (
+    <Card title="Processor" right={<Temperature summary={cpuSensors(sensors)} />}>
+      <p className="mt-1 font-mono text-2xl font-medium tabular">{formatPercent(percent)}</p>
+      <Bar percent={percent} />
+
+      {cpu?.model && <p className="mt-2 text-sm">{cpu.model}</p>}
 
       <Facts
         items={[
-          cpu.sockets === null ? null : `${cpu.sockets} socket${cpu.sockets === 1 ? '' : 's'}`,
-          cpu.coresPerSocket === null ? null : `${cpu.coresPerSocket} cores each`,
-          cpu.threads === null ? null : `${cpu.threads} threads`,
-          cpu.vendor,
+          cpu?.coresPerSocket && cpu.sockets
+            ? `${cpu.sockets > 1 ? `${cpu.sockets} × ` : ''}${cpu.coresPerSocket} cores`
+            : null,
+          cpu?.threads ? `${cpu.threads} threads` : null,
+          clockMhz === null ? null : `${formatMhz(clockMhz)} of ${formatMhz(clockMaxMhz)}`,
+          loadPercent === null ? null : `load ${formatPercent(loadPercent, 0)}`,
+          cpu?.governor,
         ]}
       />
 
-      <Facts
-        items={[
-          cpu.family === null ? null : `family ${cpu.family}`,
-          cpu.modelNumber === null ? null : `model ${cpu.modelNumber}`,
-          cpu.stepping === null ? null : `stepping ${cpu.stepping}`,
-          cpu.microcode === null ? null : `microcode ${cpu.microcode}`,
-          cpu.governor === null ? null : `${cpu.governor} governor`,
-        ]}
-      />
-
-      {cpu.caches.length > 0 && (
+      {cpu && cpu.caches.length > 0 && (
         <Facts
           items={cpu.caches.map((cache) => `${cacheName(cache)} ${formatBytes(cache.sizeBytes)}`)}
         />
       )}
 
-      {cpu.features.length > 0 && (
+      {cpu && cpu.features.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {cpu.features.map((feature) => (
             <span
@@ -71,7 +126,7 @@ export function Processor({ cpu }: { cpu: CpuDetail }) {
           ))}
         </div>
       )}
-    </Section>
+    </Card>
   );
 }
 
@@ -82,56 +137,146 @@ function cacheName(cache: { level: number; type: string }): string {
 }
 
 export function Memory({
-  modules,
+  usedBytes,
   totalBytes,
+  percent,
+  availableBytes,
+  swapUsedBytes,
+  swapTotalBytes,
+  modules,
+  slots,
 }: {
-  modules: readonly MemoryModule[];
+  usedBytes: number | null;
   totalBytes: number | null;
+  percent: number | null;
+  availableBytes: number | null;
+  swapUsedBytes: number | null;
+  swapTotalBytes: number | null;
+  modules: readonly MemoryModule[];
+  slots: number | null;
 }) {
-  const kinds = [...new Set(modules.map((module) => module.type).filter(Boolean))];
-
   return (
-    <Section title="Memory">
-      <p className="mt-1 text-sm">
-        {formatBytes(totalBytes)}
-        <span className="text-muted-foreground">
-          {' '}
-          across {modules.length} module{modules.length === 1 ? '' : 's'}
+    <Card
+      title="Memory"
+      right={
+        <span className="font-mono text-xs tabular text-muted-foreground">
+          {formatPercent(percent, 0)}
         </span>
+      }
+    >
+      <p className="mt-1 font-mono text-2xl font-medium tabular">
+        {formatOfTotal(usedBytes, totalBytes)}
       </p>
-      <Facts items={kinds} />
+      <Bar percent={percent} />
 
-      <ul className="mt-3 flex flex-col gap-1">
-        {modules.map((module) => (
-          <li
-            key={module.slot}
-            className="flex items-baseline justify-between gap-4 font-mono text-xs"
-          >
-            <span className="truncate text-muted-foreground">{module.slot}</span>
-            <span className="shrink-0 tabular">
-              {formatBytes(module.sizeBytes)}
-              {module.width && <span className="ml-2 text-muted-foreground">{module.width}</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Section>
+      <Facts
+        items={[
+          availableBytes === null ? null : `${formatBytes(availableBytes)} available`,
+          swapTotalBytes ? `swap ${formatOfTotal(swapUsedBytes, swapTotalBytes)}` : null,
+        ]}
+      />
+
+      {/* One line rather than a row per module: eight identical rows spread a
+          single fact over eight lines and hid the one that matters. */}
+      <Facts items={[summarizeMemory(modules, slots)]} />
+    </Card>
   );
 }
 
-export function Disks({ devices }: { devices: readonly BlockDevice[] }) {
+export function Network({
+  rxBytesPerSecond,
+  txBytesPerSecond,
+  nics,
+}: {
+  rxBytesPerSecond: number | null;
+  txBytesPerSecond: number | null;
+  nics: readonly NicInfo[];
+}) {
   return (
-    <Section title="Disks">
-      <ul className="mt-3 flex flex-col gap-3">
-        {devices.map((device) => (
+    <Card
+      title="Network"
+      right={
+        <span className="font-mono text-sm tabular">
+          ↓ {formatBytesPerSecond(rxBytesPerSecond)}
+          <span className="text-muted-foreground"> · </span>↑{' '}
+          {formatBytesPerSecond(txBytesPerSecond)}
+        </span>
+      }
+    >
+      {nics.length === 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">Summed across physical interfaces.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-2">
+          {nics.map((nic) => (
+            <li key={nic.name}>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="truncate font-mono text-sm">{nic.name}</span>
+                <span className="shrink-0 font-mono text-xs tabular">
+                  ↓ {formatBytesPerSecond(nic.rxBytesPerSecond)}
+                  <span className="text-muted-foreground"> · </span>↑{' '}
+                  {formatBytesPerSecond(nic.txBytesPerSecond)}
+                </span>
+              </div>
+              <Facts
+                items={[
+                  nic.state,
+                  nic.speedMbps === null ? null : formatLinkSpeed(nic.speedMbps),
+                  nic.mtu === null ? null : `MTU ${nic.mtu}`,
+                  // Silence is the normal case, so say it only when it is not.
+                  nic.rxErrors + nic.txErrors > 0
+                    ? `${formatCount(nic.rxErrors + nic.txErrors)} errors`
+                    : null,
+                  nic.rxDropped + nic.txDropped > 0
+                    ? `${formatCount(nic.rxDropped + nic.txDropped)} dropped`
+                    : null,
+                ]}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Disks, with the filesystems that live on them.
+ *
+ * A mount point and the drive underneath it are one subject. Listed apart, a
+ * reader had to match `/dev/nvme1n1p2` to `nvme1n1` themselves to learn which
+ * drive was filling up, or which one was the hot one.
+ */
+export function Storage({
+  devices,
+  filesystems,
+  sensors,
+}: {
+  devices: readonly BlockDevice[];
+  filesystems: readonly DiskInfo[];
+  sensors: readonly SensorReading[];
+}) {
+  const groups = devices.map((device) => ({
+    device,
+    mounts: filesystems.filter((disk) => partitionOf(disk.device) === device.name),
+  }));
+
+  const orphans = filesystems.filter(
+    (disk) => !devices.some((device) => partitionOf(disk.device) === device.name),
+  );
+
+  return (
+    <Card title="Storage">
+      <ul className="mt-3 flex flex-col gap-4">
+        {groups.map(({ device, mounts }) => (
           <li key={device.name}>
             <div className="flex items-baseline justify-between gap-3">
               <span className="truncate font-mono text-sm">
                 {device.name}
                 {device.model && <span className="text-muted-foreground"> · {device.model}</span>}
               </span>
-              <span className="shrink-0 font-mono text-sm tabular">
-                {formatBytes(device.sizeBytes)}
+              <span className="flex shrink-0 items-baseline gap-3">
+                <Temperature summary={deviceSensors(sensors, device.name)} />
+                <span className="font-mono text-sm tabular">{formatBytes(device.sizeBytes)}</span>
               </span>
             </div>
 
@@ -141,62 +286,112 @@ export function Disks({ devices }: { devices: readonly BlockDevice[] }) {
                 device.linkSpeed === null
                   ? null
                   : `${device.linkSpeed}${device.linkWidth ? ` ×${device.linkWidth}` : ''}`,
-                device.schedulerQueue === null ? null : `${device.schedulerQueue} scheduler`,
+                `read ${formatBytesPerSecond(device.readBytesPerSecond)}`,
+                `write ${formatBytesPerSecond(device.writeBytesPerSecond)}`,
               ]}
             />
 
-            <p className="mt-1 font-mono text-xs tabular">
-              read {formatBytesPerSecond(device.readBytesPerSecond)}
-              <span className="text-muted-foreground"> · </span>
-              write {formatBytesPerSecond(device.writeBytesPerSecond)}
-              {device.readsPerSecond !== null && device.writesPerSecond !== null && (
-                <span className="text-muted-foreground">
-                  {' '}
-                  · {formatCount(Math.round(device.readsPerSecond + device.writesPerSecond))} IOPS
-                </span>
-              )}
-            </p>
+            {mounts.map((mount) => (
+              <Mount key={mount.mount} mount={mount} />
+            ))}
+          </li>
+        ))}
+
+        {orphans.map((mount) => (
+          <li key={mount.mount}>
+            <Mount mount={mount} />
           </li>
         ))}
       </ul>
-    </Section>
+    </Card>
   );
 }
 
-export function Interfaces({ nics }: { nics: readonly NicInfo[] }) {
+function Mount({ mount }: { mount: DiskInfo }) {
+  const percent = mount.totalBytes > 0 ? (mount.usedBytes / mount.totalBytes) * 100 : null;
+
   return (
-    <Section title="Network interfaces">
-      <ul className="mt-3 flex flex-col gap-3">
-        {nics.map((nic) => (
-          <li key={nic.name}>
+    <div className="mt-2 pl-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="truncate font-mono text-xs">
+          {mount.mount}
+          {mount.fsType && <span className="text-muted-foreground"> · {mount.fsType}</span>}
+        </span>
+        <span className="shrink-0 font-mono text-xs tabular">
+          {formatOfTotal(mount.usedBytes, mount.totalBytes)}
+          <span className="ml-2 text-muted-foreground">{formatPercent(percent, 0)}</span>
+        </span>
+      </div>
+      <Bar percent={percent} />
+    </div>
+  );
+}
+
+/** `/dev/nvme1n1p2` belongs to `nvme1n1`; `/dev/sda1` belongs to `sda`. */
+export function partitionOf(devicePath: string): string {
+  const name = devicePath.replace(/^\/dev\//, '');
+  return /^nvme\d+n\d+p\d+$/.test(name) ? name.replace(/p\d+$/, '') : name.replace(/\d+$/, '');
+}
+
+export function Graphics({ gpus }: { gpus: readonly GpuInfo[] }) {
+  return (
+    <Card title="Graphics">
+      <ul className="mt-2 flex flex-col gap-3">
+        {gpus.map((gpu) => (
+          <li key={gpu.card}>
             <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate font-mono text-sm">{nic.name}</span>
-              <span className="shrink-0 font-mono text-xs tabular">
-                ↓ {formatBytesPerSecond(nic.rxBytesPerSecond)}
-                <span className="text-muted-foreground"> · </span>↑{' '}
-                {formatBytesPerSecond(nic.txBytesPerSecond)}
+              <span className="truncate font-mono text-sm">
+                {[gpu.vendor, gpu.driver].filter(Boolean).join(' ') || gpu.card}
+              </span>
+              <span className="shrink-0 font-mono text-sm tabular">
+                {formatMhz(gpu.mhzCur)}
+                <span className="text-muted-foreground"> / {formatMhz(gpu.mhzMax)}</span>
               </span>
             </div>
-
+            <Bar
+              percent={gpu.mhzCur !== null && gpu.mhzMax ? (gpu.mhzCur / gpu.mhzMax) * 100 : null}
+            />
             <Facts
               items={[
-                nic.state,
-                nic.speedMbps === null ? null : formatLinkSpeed(nic.speedMbps),
-                nic.mtu === null ? null : `MTU ${nic.mtu}`,
-                nic.macAddress,
-                // Silence is the normal case, so say it only when it is not.
-                nic.rxErrors + nic.txErrors > 0
-                  ? `${formatCount(nic.rxErrors + nic.txErrors)} errors`
-                  : null,
-                nic.rxDropped + nic.txDropped > 0
-                  ? `${formatCount(nic.rxDropped + nic.txDropped)} dropped`
-                  : null,
+                gpu.pciId,
+                gpu.linkSpeed === null
+                  ? null
+                  : `${gpu.linkSpeed}${gpu.linkWidth ? ` ×${gpu.linkWidth}` : ''}`,
+                gpu.memShared
+                  ? // Not a driver that failed to answer: an integrated GPU has
+                    // no memory of its own, and a blank would read as a gap.
+                    'memory shared with system RAM'
+                  : `VRAM ${formatOfTotal(gpu.memUsedBytes, gpu.memTotalBytes)}`,
+                gpu.memMhzCur === null ? null : `memory ${formatMhz(gpu.memMhzCur)}`,
+                gpu.busyPercent === null ? null : `${formatPercent(gpu.busyPercent, 0)} busy`,
               ]}
             />
           </li>
         ))}
       </ul>
-    </Section>
+    </Card>
+  );
+}
+
+/** Sensors belonging to no section above — one line, not a heading. */
+export function OtherSensors({
+  sensors,
+  blockDevices,
+}: {
+  sensors: readonly SensorReading[];
+  blockDevices: readonly string[];
+}) {
+  const loose = looseSensors(sensors, blockDevices);
+  if (loose.length === 0) return null;
+
+  return (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 px-1 font-mono text-xs text-muted-foreground">
+      {loose.map((reading) => (
+        <span key={`${reading.chip}.${reading.label}`}>
+          {reading.chip} <span className="tabular">{formatCelsius(reading.celsius)}</span>
+        </span>
+      ))}
+    </p>
   );
 }
 

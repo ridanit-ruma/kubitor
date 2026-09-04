@@ -1,4 +1,5 @@
 import type { CapabilityManifest } from '@kubitor/shared';
+import type { SensorReading } from './sensors';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -248,6 +249,8 @@ export interface HostResourcesRow extends Record<string, unknown> {
   disks: DiskInfo[];
   cpu: CpuDetail | null;
   memory_modules: MemoryModule[];
+  memory_slots: number | null;
+  sensors: SensorReading[];
   nics: NicInfo[];
   block_devices: BlockDevice[];
 }

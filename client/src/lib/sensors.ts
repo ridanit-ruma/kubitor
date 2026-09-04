@@ -1,61 +1,123 @@
-export interface SensorGroup {
+export interface SensorReading {
+  /** Driver name: `coretemp`, `nvme`, `iwlwifi_1`. */
   chip: string;
-  /** The one reading that speaks for the chip, where there is one. */
-  headline: { label: string; celsius: number } | null;
-  /** Everything else, summarized rather than listed. */
+  /** The device it belongs to, where the kernel could name one: `nvme0`. */
+  device: string | null;
+  label: string;
+  celsius: number;
+}
+
+export interface SensorSummary {
+  /** The reading that speaks for the group. */
+  celsius: number;
   lowest: number;
   highest: number;
   count: number;
 }
 
+/** Chips that measure the processor, whichever vendor made it. */
+const CPU_CHIPS = ['coretemp', 'k10temp', 'zenpower', 'cpu_thermal', 'cpu-thermal', 'acpitz'];
+
 /**
- * Sensor readings, grouped by the chip that produced them.
+ * One figure for a set of readings, plus the range behind it.
  *
- * A modern CPU reports a package temperature and one per core, and an NVMe
- * reports three. Listed flat that is twenty near-identical numbers, and the one
- * that matters — the hottest — is no easier to find than any other. Each chip
- * collapses to its headline reading plus the range underneath it.
+ * A CPU reports a package temperature and one per core, and an NVMe reports
+ * three. The package or composite sensor covers the whole part and is the
+ * honest single answer; where none exists the hottest is, because that is the
+ * one that decides whether anything throttles.
  */
-export function groupSensors(temps: Record<string, number>): SensorGroup[] {
-  const byChip = new Map<string, { label: string; celsius: number }[]>();
+export function summarize(readings: readonly SensorReading[]): SensorSummary | null {
+  if (readings.length === 0) return null;
 
-  for (const [key, celsius] of Object.entries(temps)) {
-    const separator = key.indexOf('.');
-    const chip = separator === -1 ? key : key.slice(0, separator);
-    const label = separator === -1 ? key : key.slice(separator + 1);
+  const values = readings.map((reading) => reading.celsius);
+  const headline = readings.find((reading) =>
+    /^(package|composite|tctl|tdie)/i.test(reading.label),
+  );
 
-    byChip.set(chip, [...(byChip.get(chip) ?? []), { label, celsius }]);
-  }
+  return {
+    celsius: headline?.celsius ?? Math.max(...values),
+    lowest: Math.min(...values),
+    highest: Math.max(...values),
+    count: readings.length,
+  };
+}
 
-  return [...byChip.entries()]
-    .map(([chip, readings]) => {
-      const values = readings.map((reading) => reading.celsius);
-
-      return {
-        chip,
-        headline: headlineOf(readings),
-        lowest: Math.min(...values),
-        highest: Math.max(...values),
-        count: readings.length,
-      };
-    })
-    .sort((a, b) => b.highest - a.highest);
+/** Readings from the processor's own sensors. */
+export function cpuSensors(readings: readonly SensorReading[]): SensorSummary | null {
+  return summarize(readings.filter((reading) => CPU_CHIPS.includes(reading.chip)));
 }
 
 /**
- * The reading a person means when they ask how hot a chip is.
+ * Readings belonging to one block device.
  *
- * A package sensor covers the whole die and is the honest answer for a CPU; a
- * composite sensor is the drive's own summary. Where neither exists, no reading
- * speaks for the rest and the range alone is reported.
+ * hwmon names an NVMe controller `nvme0` and its block device is `nvme0n1`, so
+ * the match is a prefix rather than an equality. Two drives report the same
+ * chip name, which is why the device is carried at all.
  */
-function headlineOf(
-  readings: readonly { label: string; celsius: number }[],
-): { label: string; celsius: number } | null {
-  const preferred = readings.find((reading) =>
-    /^(package|composite|tctl|tdie)/i.test(reading.label),
+export function deviceSensors(
+  readings: readonly SensorReading[],
+  blockDevice: string,
+): SensorSummary | null {
+  return summarize(
+    readings.filter((reading) => reading.device !== null && blockDevice.startsWith(reading.device)),
   );
-  if (preferred) return preferred;
+}
 
-  return readings.length === 1 ? (readings[0] ?? null) : null;
+/**
+ * Everything that belongs to no section above.
+ *
+ * A wireless card or a chipset sensor is worth showing, but not worth a heading
+ * of its own — it goes in one line at the end rather than inventing a section.
+ */
+export function looseSensors(
+  readings: readonly SensorReading[],
+  blockDevices: readonly string[],
+): SensorReading[] {
+  return readings.filter((reading) => {
+    if (CPU_CHIPS.includes(reading.chip)) return false;
+    if (
+      reading.device !== null &&
+      blockDevices.some((name) => name.startsWith(reading.device ?? ''))
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * The memory a machine has, in one line.
+ *
+ * Listing eight identical modules spread one fact over eight rows. What a
+ * reader wants is the type, the size of a module, and whether there is a slot
+ * left — which is a sentence, not a table.
+ */
+export function summarizeMemory(
+  modules: readonly { sizeBytes: number; type: string | null }[],
+  slots: number | null,
+): string | null {
+  if (modules.length === 0) return null;
+
+  const kinds = [...new Set(modules.map((module) => module.type).filter(Boolean))];
+  const sizes = [...new Set(modules.map((module) => module.sizeBytes))];
+
+  const parts: string[] = [];
+  if (kinds.length > 0) parts.push(kinds.join(' + '));
+
+  // Identical modules are the normal case and read as "8 × 4 GiB"; a mixed set
+  // is unusual enough to be worth saying plainly rather than averaging away.
+  parts.push(
+    sizes.length === 1 && sizes[0] !== undefined
+      ? `${modules.length} × ${gibibytes(sizes[0])}`
+      : `${modules.length} modules`,
+  );
+
+  if (slots !== null && slots > 0) parts.push(`${modules.length}/${slots} slots`);
+
+  return parts.join(' · ');
+}
+
+function gibibytes(bytes: number): string {
+  const value = bytes / 1024 ** 3;
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} GiB`;
 }
