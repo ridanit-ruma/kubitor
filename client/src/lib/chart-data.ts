@@ -1,8 +1,11 @@
-import type { LiveSample } from './live';
-
 export interface ChartPoint {
   at: number;
   value: number | null;
+}
+
+/** Anything the socket delivered, as long as it says when it was measured. */
+export interface Timed {
+  at: number;
 }
 
 /**
@@ -24,18 +27,18 @@ const PLOT_STEPS = 300;
  * into its last pixel. Its newest reading is always kept, because that point is
  * the one that makes the line move.
  */
-export function withLiveTail(
+export function withLiveTail<Sample extends Timed>(
   history: readonly ChartPoint[],
-  tail: readonly LiveSample[],
+  tail: readonly Sample[],
   spanMs: number,
-  pick: (sample: LiveSample) => number | null,
+  pick: (sample: Sample) => number | null,
 ): ChartPoint[] {
   const from = history.at(-1)?.at ?? 0;
   const fresh = tail.filter((sample) => sample.at > from);
   if (fresh.length === 0) return [...history];
 
   const everyMs = spanMs / PLOT_STEPS;
-  const kept: LiveSample[] = [];
+  const kept: Sample[] = [];
   for (const sample of fresh) {
     const last = kept.at(-1);
     if (!last || sample.at - last.at >= everyMs) kept.push(sample);

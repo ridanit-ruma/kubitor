@@ -55,6 +55,10 @@ export const api = {
 
   overview: () => request<ClusterSummary>('/api/overview'),
 
+  /** The cluster's throughput over a window, as the database kept it. */
+  overviewSeries: (minutes: number) =>
+    request<{ points: ClusterTrafficPoint[] }>(`/api/overview/series?minutes=${minutes}`),
+
   rescan: () => request<CapabilityManifest>('/api/capabilities/rescan', { method: 'POST' }),
 
   setOverride: (id: string, override: 'auto' | 'force_on' | 'force_off') =>
@@ -133,6 +137,13 @@ export interface ClusterSummary {
   capacity: { cpuMilli: number; memoryBytes: number; pods: number };
   /** Warning events in the last hour. */
   warnings: number;
+}
+
+/** One instant of cluster-wide throughput, summed across the nodes. */
+export interface ClusterTrafficPoint {
+  at: number;
+  rxBytesPerSecond: number | null;
+  txBytesPerSecond: number | null;
 }
 
 export interface LiveNodeMetrics {

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { LiveCache, LiveNodeMetrics } from '../collect/live-cache.js';
 import type { HostSeriesPoint, NodeSamplesRepo, SeriesPoint } from '../db/node-samples.repo.js';
 import { counterRate } from '../kube/rates.js';
+import type { ClusterTrafficPoint } from '../query/cluster-series.js';
 import type { ClusterSummary } from '../query/cluster-summary.js';
 import { csvRow } from '../query/csv.js';
 import type { FacetQuery, QueryFilters } from '../query/facet-query.js';
@@ -113,6 +114,27 @@ export class QueryController {
   @Get('overview')
   async overview(): Promise<ClusterSummary> {
     return this.#query.summary(Date.now());
+  }
+
+  /**
+   * The cluster's throughput over a window.
+   *
+   * Bucketed the same way a node's series is, and always bucketed: nodes report
+   * on their own clocks, so summing them means grouping them into the same
+   * instants first.
+   */
+  @Get('overview/series')
+  async overviewSeries(
+    @Query() query: Record<string, string>,
+  ): Promise<{ points: ClusterTrafficPoint[] }> {
+    const parsed = seriesQuery.safeParse(query);
+    if (!parsed.success) throw new BadRequestException({ error: 'invalid_query' });
+
+    const until = Date.now();
+    const spanMs = parsed.data.minutes * 60_000;
+    const width = Math.max(STORE_INTERVAL_MS, bucketWidthFor(spanMs));
+
+    return { points: await this.#query.traffic(until - spanMs, until, width) };
   }
 
   @Get('facets/:facet')

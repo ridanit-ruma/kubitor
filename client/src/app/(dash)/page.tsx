@@ -12,8 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { ClusterSummary, LiveNodeMetrics } from '@/lib/api';
+import type { ClusterSummary, ClusterTrafficPoint, LiveNodeMetrics } from '@/lib/api';
 import { api } from '@/lib/api';
+import { withLiveTail } from '@/lib/chart-data';
 import {
   formatBytes,
   formatBytesPerSecond,
@@ -24,6 +25,15 @@ import {
 import { useClusterHistory, useLiveMetrics, useNow } from '@/lib/live';
 import { useManifest } from '@/lib/manifest-context';
 import { cn } from '@/lib/utils';
+
+/**
+ * How far back the traffic charts look.
+ *
+ * Stored history rather than what the page has watched since it opened: a
+ * reload used to empty the chart, and a rate with nothing behind it cannot say
+ * whether what it shows is normal.
+ */
+const TRAFFIC_MINUTES = 60;
 
 /**
  * The cluster in one screen: how loaded it is, what is running, what is not.
@@ -38,8 +48,9 @@ export default function OverviewPage() {
   const { manifest } = useManifest();
   const live = useLiveMetrics();
   const now = useNow();
-  const history = useClusterHistory(live);
+  const tail = useClusterHistory(live);
   const [summary, setSummary] = useState<ClusterSummary | null>(null);
+  const [traffic, setTraffic] = useState<ClusterTrafficPoint[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +68,28 @@ export default function OverviewPage() {
     void load();
     // Pod phases move on the kubelet's schedule, not the socket's.
     const timer = setInterval(() => void load(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async (): Promise<void> => {
+      try {
+        const series = await api.overviewSeries(TRAFFIC_MINUTES);
+        if (!cancelled) setTraffic(series.points);
+      } catch {
+        // The socket keeps the right-hand edge moving either way; the chart
+        // simply has less behind it until the next attempt.
+      }
+    };
+
+    void load();
+    // History moves at the rate it is stored, which is far slower than this.
+    const timer = setInterval(() => void load(), 30_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -83,13 +116,23 @@ export default function OverviewPage() {
         <Series
           title="Received"
           height={64}
-          points={history.map((sample) => ({ at: sample.at, value: sample.rxBytesPerSecond }))}
+          points={withLiveTail(
+            traffic.map((point) => ({ at: point.at, value: point.rxBytesPerSecond })),
+            tail,
+            TRAFFIC_MINUTES * 60_000,
+            (sample) => sample.rxBytesPerSecond,
+          )}
           format={(value) => formatBytesPerSecond(value)}
         />
         <Series
           title="Transmitted"
           height={64}
-          points={history.map((sample) => ({ at: sample.at, value: sample.txBytesPerSecond }))}
+          points={withLiveTail(
+            traffic.map((point) => ({ at: point.at, value: point.txBytesPerSecond })),
+            tail,
+            TRAFFIC_MINUTES * 60_000,
+            (sample) => sample.txBytesPerSecond,
+          )}
           format={(value) => formatBytesPerSecond(value)}
         />
         <Attention summary={summary} manifest={manifest} />

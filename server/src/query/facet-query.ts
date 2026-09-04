@@ -2,6 +2,7 @@ import { type Kysely, sql } from 'kysely';
 import type { DialectSql } from '../db/dialect.js';
 import type { Database } from '../db/schema.js';
 import { type FacetDescriptor, facetDescriptor } from '../plugins/facets.js';
+import { type ClusterTrafficPoint, clusterTraffic } from './cluster-series.js';
 import { type ClusterSummary, clusterSummary } from './cluster-summary.js';
 
 export interface QueryFilters {
@@ -75,6 +76,11 @@ export class FacetQuery {
   /** The cluster in a dozen numbers, counted in the database. */
   async summary(now: number): Promise<ClusterSummary> {
     return clusterSummary(this.#db, now);
+  }
+
+  /** What every node moved over a window, summed. */
+  async traffic(since: number, until: number, widthMs: number): Promise<ClusterTrafficPoint[]> {
+    return clusterTraffic(this.#db, since, until, widthMs);
   }
 
   async run(facet: string, filters: QueryFilters): Promise<QueryResult> {
