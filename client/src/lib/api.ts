@@ -70,7 +70,7 @@ export const api = {
     ),
 
   series: (node: string, minutes: number) =>
-    request<{ node: string; points: SeriesPoint[]; rates: RatePoint[] }>(
+    request<{ node: string; points: SeriesPoint[]; rates: RatePoint[]; host: HostSeriesPoint[] }>(
       `/api/nodes/${encodeURIComponent(node)}/series?minutes=${minutes}`,
     ),
 
@@ -267,6 +267,20 @@ export interface SeriesPoint {
 
 export interface RatePoint {
   at: number;
+  netRxBytesPerSecond: number | null;
+  netTxBytesPerSecond: number | null;
+}
+
+/**
+ * What the agent measured, over time.
+ *
+ * The same quantities the node cards show, so a chart and the figure above it
+ * are the same measurement rather than two views that nearly agree.
+ */
+export interface HostSeriesPoint {
+  at: number;
+  cpuPercent: number | null;
+  memUsedBytes: number | null;
   netRxBytesPerSecond: number | null;
   netTxBytesPerSecond: number | null;
 }

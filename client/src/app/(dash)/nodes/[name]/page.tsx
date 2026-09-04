@@ -9,10 +9,17 @@ import { Graphics, Memory, Network, OtherSensors, Processor, Storage } from '@/c
 import { Series } from '@/components/series';
 import { DEFAULT_RANGE_MINUTES, TimeRange } from '@/components/time-range';
 import { Button } from '@/components/ui/button';
-import type { DiskInfo, HostResourcesRow, RatePoint, SeriesPoint } from '@/lib/api';
+import type {
+  DiskInfo,
+  HostResourcesRow,
+  HostSeriesPoint,
+  RatePoint,
+  SeriesPoint,
+} from '@/lib/api';
 import { api } from '@/lib/api';
+import { withLiveTail } from '@/lib/chart-data';
 import { formatBytes, formatBytesPerSecond, formatPercent } from '@/lib/format';
-import { useLiveMetrics, useNow } from '@/lib/live';
+import { useLiveHistory, useLiveMetrics, useNow } from '@/lib/live';
 
 /**
  * Everything about one machine, grouped by the part it describes.
@@ -31,6 +38,7 @@ export default function NodeDetailPage() {
   const [minutes, setMinutes] = useState<number>(DEFAULT_RANGE_MINUTES);
   const [points, setPoints] = useState<SeriesPoint[]>([]);
   const [rates, setRates] = useState<RatePoint[]>([]);
+  const [hostPoints, setHostPoints] = useState<HostSeriesPoint[]>([]);
   const [resources, setResources] = useState<HostResourcesRow | null>(null);
 
   useEffect(() => {
@@ -41,6 +49,7 @@ export default function NodeDetailPage() {
       if (!cancelled) {
         setPoints(series.points);
         setRates(series.rates);
+        setHostPoints(series.host);
       }
     };
 
@@ -85,6 +94,41 @@ export default function NodeDetailPage() {
   // date the page by whichever reading it actually shows.
   const cpuPercent = host?.cpuPercent ?? current?.cpuPercent ?? null;
   const sampledAt = host?.sampledAt ?? current?.sampledAt ?? null;
+
+  const tail = useLiveHistory(live, name);
+  const spanMs = minutes * 60_000;
+  const memoryTotal = host?.memTotalBytes ?? current?.capacityMemoryBytes ?? null;
+
+  // One source for every chart, chosen the way the cards above choose: the
+  // agent wherever it has anything to say, the kubelet where it does not. The
+  // two measure different things — the machine as the kernel sees it, against
+  // containers billed to a declared capacity — so mixing them inside one line
+  // would draw a step no machine actually took.
+  const source: 'host' | 'kubelet' = hostPoints.length > 0 || host ? 'host' : 'kubelet';
+  const fresh = tail.filter((sample) => sample.source === source);
+
+  const cpuHistory =
+    source === 'host'
+      ? hostPoints.map((point) => ({ at: point.at, value: point.cpuPercent }))
+      : points.map((point) => ({
+          at: point.at,
+          value: cpuPercentOf(point, current?.capacityCpuMilli ?? null),
+        }));
+
+  const memoryHistory =
+    source === 'host'
+      ? hostPoints.map((point) => ({ at: point.at, value: point.memUsedBytes }))
+      : points.map((point) => ({ at: point.at, value: point.memoryBytes }));
+
+  const rxHistory =
+    source === 'host'
+      ? hostPoints.map((point) => ({ at: point.at, value: point.netRxBytesPerSecond }))
+      : rates.map((point) => ({ at: point.at, value: point.netRxBytesPerSecond }));
+
+  const txHistory =
+    source === 'host'
+      ? hostPoints.map((point) => ({ at: point.at, value: point.netTxBytesPerSecond }))
+      : rates.map((point) => ({ at: point.at, value: point.netTxBytesPerSecond }));
 
   const sensors = resources?.sensors ?? [];
   const blockDevices = resources?.block_devices ?? [];
@@ -147,25 +191,24 @@ export default function NodeDetailPage() {
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Series
             title="CPU"
-            points={points.map((point) => ({
-              at: point.at,
-              value: cpuPercentOf(point, current?.capacityCpuMilli ?? null),
-            }))}
+            points={withLiveTail(cpuHistory, fresh, spanMs, (sample) => sample.cpuPercent)}
             format={(value) => formatPercent(value)}
+            ceiling={100}
           />
           <Series
             title="Memory"
-            points={points.map((point) => ({ at: point.at, value: point.memoryBytes }))}
+            points={withLiveTail(memoryHistory, fresh, spanMs, (sample) => sample.memoryBytes)}
             format={(value) => formatBytes(value)}
+            ceiling={memoryTotal}
           />
           <Series
             title="Received"
-            points={rates.map((point) => ({ at: point.at, value: point.netRxBytesPerSecond }))}
+            points={withLiveTail(rxHistory, fresh, spanMs, (sample) => sample.netRxBytesPerSecond)}
             format={(value) => formatBytesPerSecond(value)}
           />
           <Series
             title="Transmitted"
-            points={rates.map((point) => ({ at: point.at, value: point.netTxBytesPerSecond }))}
+            points={withLiveTail(txHistory, fresh, spanMs, (sample) => sample.netTxBytesPerSecond)}
             format={(value) => formatBytesPerSecond(value)}
           />
         </div>

@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatBytes, formatBytesPerSecond, formatMhz, formatPercent } from '@/lib/format';
+import type { LiveNodeMetrics } from '@/lib/api';
+import { formatBytes, formatBytesPerSecond, formatClockPair, formatPercent } from '@/lib/format';
 import { useLiveMetrics, useNow } from '@/lib/live';
 import { useManifest } from '@/lib/manifest-context';
 
@@ -21,8 +22,11 @@ export default function OverviewPage() {
   const live = useLiveMetrics();
   const now = useNow();
 
-  const totalRx = sum(live.nodes.map((node) => node.netRxBytesPerSecond));
-  const totalTx = sum(live.nodes.map((node) => node.netTxBytesPerSecond));
+  // The agent measures the host's interfaces once a second; the kubelet reports
+  // a counter every five, and a rate taken across two of those moves in steps.
+  // Prefer the finer source, exactly as the node screen does.
+  const totalRx = sum(live.nodes.map(netRx));
+  const totalTx = sum(live.nodes.map(netTx));
 
   return (
     <div className="screen gap-4">
@@ -39,7 +43,8 @@ export default function OverviewPage() {
           value={
             manifest ? `${live.nodes.length}/${manifest.cluster.nodes}` : String(live.nodes.length)
           }
-          detail={live.connected ? 'live' : 'reconnecting'}
+          // A working socket needs no caption; a broken one does.
+          detail={live.connected ? undefined : 'reconnecting'}
           tone={
             manifest && live.nodes.length < manifest.cluster.nodes && manifest.cluster.nodes > 0
               ? 'blind'
@@ -69,28 +74,30 @@ export default function OverviewPage() {
       </div>
 
       <div className="pane rounded-lg border border-line">
-        <Table>
+        {/* Fixed layout: a long node name shortens itself rather than pushing
+            the reading off the right-hand edge. */}
+        <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
-              <TableHead className="font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="truncate font-mono text-[11px] uppercase tracking-[0.1em]">
                 Node
               </TableHead>
-              <TableHead className="text-right font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[30%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[22%] lg:w-[14%]">
                 CPU
               </TableHead>
-              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
+              <TableHead className="hidden w-[24%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell lg:w-[16%]">
                 Memory
               </TableHead>
-              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
+              <TableHead className="hidden w-[12%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
                 Disk
               </TableHead>
-              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
+              <TableHead className="hidden w-[16%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] lg:table-cell">
                 Clock
               </TableHead>
-              <TableHead className="hidden text-right font-mono text-[11px] uppercase tracking-[0.1em] xl:table-cell">
+              <TableHead className="hidden w-[15%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] xl:table-cell">
                 Network
               </TableHead>
-              <TableHead className="text-right font-mono text-[11px] uppercase tracking-[0.1em]">
+              <TableHead className="w-[26%] truncate text-right font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[18%] lg:w-[13%]">
                 Reading
               </TableHead>
             </TableRow>
@@ -109,7 +116,7 @@ export default function OverviewPage() {
               .sort((a, b) => a.node.localeCompare(b.node))
               .map((node) => (
                 <TableRow key={node.node}>
-                  <TableCell>
+                  <TableCell className="max-w-0 truncate">
                     <Link
                       href={`/nodes/${encodeURIComponent(node.node)}`}
                       className="font-medium underline-offset-4 hover:underline"
@@ -136,15 +143,15 @@ export default function OverviewPage() {
                   </TableCell>
                   <TableCell className="hidden text-right font-mono text-xs tabular lg:table-cell">
                     {node.host ? (
-                      formatMhz(node.host.cpuMhzAverage)
+                      formatClockPair(node.host.cpuMhzAverage, node.host.cpuMhzMax)
                     ) : (
                       // Not a gap in the data: no agent runs here to measure it.
                       <span className="text-blind">no agent</span>
                     )}
                   </TableCell>
                   <TableCell className="hidden text-right font-mono text-xs tabular xl:table-cell">
-                    ↓ {formatBytesPerSecond(node.netRxBytesPerSecond)}
-                    <br />↑ {formatBytesPerSecond(node.netTxBytesPerSecond)}
+                    ↓ {formatBytesPerSecond(netRx(node))}
+                    <br />↑ {formatBytesPerSecond(netTx(node))}
                   </TableCell>
                   <TableCell className="text-right">
                     <Age
@@ -190,6 +197,15 @@ function freshest(
     ...(node.host ? [node.host.sampledAt] : []),
   ]);
   return times.length === 0 ? null : Math.max(...times);
+}
+
+/** The host's own measurement where an agent reports it, the kubelet's otherwise. */
+function netRx(node: LiveNodeMetrics): number | null {
+  return node.host?.netRxBytesPerSecond ?? node.netRxBytesPerSecond;
+}
+
+function netTx(node: LiveNodeMetrics): number | null {
+  return node.host?.netTxBytesPerSecond ?? node.netTxBytesPerSecond;
 }
 
 function sum(values: readonly (number | null)[]): number | null {

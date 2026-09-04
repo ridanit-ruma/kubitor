@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatAge,
+  formatAxisTime,
   formatBytes,
   formatBytesPerSecond,
   formatCelsius,
+  formatClockPair,
   formatCpu,
   formatDuration,
   formatPercent,
@@ -126,5 +128,48 @@ describe('niceCeiling', () => {
   it('gives an empty chart a usable axis', () => {
     expect(niceCeiling(0)).toBe(1);
     expect(niceCeiling(Number.NaN)).toBe(1);
+  });
+});
+
+describe('formatClockPair', () => {
+  /** Both halves of one fact, so the reader is not converting to compare them. */
+  it('writes the current speed and the ceiling in a single unit', () => {
+    expect(formatClockPair(892, 4400)).toBe('0.89 / 4.40 GHz');
+    expect(formatClockPair(400, 900)).toBe('400 / 900 MHz');
+  });
+
+  /** The faster half decides, so an idle core is not quoted in megahertz. */
+  it('lets the ceiling pick the unit', () => {
+    expect(formatClockPair(0, 1100)).toBe('0.00 / 1.10 GHz');
+  });
+
+  it('says what it knows when there is no ceiling to compare against', () => {
+    expect(formatClockPair(892, null)).toBe('892 MHz');
+    expect(formatClockPair(null, 4400)).toBe('—');
+  });
+});
+
+describe('formatAxisTime', () => {
+  const at = Date.parse('2026-09-03T15:48:00Z');
+
+  it('counts seconds on a window measured in minutes', () => {
+    expect(formatAxisTime(at, 5 * 60_000)).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  it('drops to hours and minutes over a working day', () => {
+    expect(formatAxisTime(at, 6 * 3_600_000)).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  /**
+   * A chart spanning a night labelled `15:48 … 02:23` says nothing about which
+   * of those is yesterday. Past half a day, the date travels with the time.
+   */
+  it('names the day once the window crosses one', () => {
+    const label = formatAxisTime(at, 24 * 3_600_000);
+    expect(label).toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
+  });
+
+  it('drops the time again when a week is on screen', () => {
+    expect(formatAxisTime(at, 7 * 86_400_000)).not.toMatch(/:/);
   });
 });

@@ -24,11 +24,21 @@ export function Series({
   title,
   points,
   format,
+  ceiling: fixedCeiling,
   height = 120,
 }: {
   title: string;
   points: readonly SeriesValue[];
   format(value: number | null): string;
+  /**
+   * The top of the scale, where the measurement has a real one.
+   *
+   * A chart scaled to its own peak makes a machine at 3% look identical to one
+   * at 90%: both fill the box. Utilisation runs to 100 and memory runs to the
+   * RAM that is installed, and drawing them against that is what makes two
+   * nodes comparable at a glance. Left out, the scale follows the data.
+   */
+  ceiling?: number | null;
   height?: number;
 }) {
   const gradientId = useId();
@@ -52,10 +62,14 @@ export function Series({
   const span = Math.max(1, maxAt - minAt);
 
   const values = usable.map((point) => point.value as number);
-  const ceiling = niceCeiling(Math.max(...values));
+  const ceiling =
+    fixedCeiling !== null && fixedCeiling !== undefined && fixedCeiling > 0
+      ? fixedCeiling
+      : niceCeiling(Math.max(...values));
 
   const x = (at: number): number => ((at - minAt) / span) * width;
-  const y = (value: number): number => height - (value / ceiling) * height;
+  const y = (value: number): number =>
+    height - (Math.min(Math.max(value, 0), ceiling) / ceiling) * height;
 
   // Each run of consecutive readings is its own path, so gaps stay gaps.
   const segments: string[] = [];
@@ -82,7 +96,7 @@ export function Series({
 
       <div className="mt-3 flex gap-2">
         <div
-          className="flex w-14 shrink-0 flex-col justify-between text-right font-mono text-[10px] text-muted-foreground"
+          className="flex w-20 shrink-0 flex-col justify-between text-right font-mono text-[10px] text-muted-foreground"
           style={{ height }}
         >
           <span>{format(ceiling)}</span>
@@ -166,7 +180,8 @@ export function Series({
         </svg>
       </div>
 
-      <div className="ml-16 mt-1.5 flex justify-between font-mono text-[10px] text-muted-foreground">
+      {/* Aligned with the plot, which starts after the label column and its gap. */}
+      <div className="ml-22 mt-1.5 flex justify-between font-mono text-[10px] text-muted-foreground">
         <span>{formatAxisTime(minAt, span)}</span>
         <span>{formatAxisTime(minAt + span / 2, span)}</span>
         <span>{formatAxisTime(maxAt, span)}</span>

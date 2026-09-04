@@ -95,6 +95,25 @@ export function formatMhz(mhz: number | null | undefined): string {
 }
 
 /**
+ * A current clock speed and its ceiling, in one unit.
+ *
+ * `892 MHz of 4.40 GHz` makes the reader convert before they can compare the
+ * two halves of a single fact, and a column of such pairs changes unit from row
+ * to row. The faster of the two decides the unit; both are then written in it.
+ */
+export function formatClockPair(
+  mhz: number | null | undefined,
+  maxMhz: number | null | undefined,
+): string {
+  if (mhz === null || mhz === undefined || !Number.isFinite(mhz)) return '—';
+  if (maxMhz === null || maxMhz === undefined || !Number.isFinite(maxMhz)) return formatMhz(mhz);
+
+  return Math.max(mhz, maxMhz) >= 1000
+    ? `${(mhz / 1000).toFixed(2)} / ${(maxMhz / 1000).toFixed(2)} GHz`
+    : `${Math.round(mhz)} / ${Math.round(maxMhz)} MHz`;
+}
+
+/**
  * A quantity against its total, in one string.
  *
  * The whole point is that neither half travels alone: "5.4 GiB" says nothing
@@ -114,8 +133,9 @@ export function formatOfTotal(
  * A time-axis label, scaled to the window it sits in.
  *
  * A five-minute chart needs seconds to distinguish its ticks; a seven-day chart
- * needs the date and nothing finer. Printing the same precision at both ends
- * makes one axis unreadable and the other repetitive.
+ * needs the date and nothing finer. In between sits the case that reads wrong
+ * most often: a chart spanning a night labelled `15:48 … 02:23 … 12:58`, where
+ * nothing on the axis says which of those is yesterday.
  */
 export function formatAxisTime(at: number, spanMs: number): string {
   const when = new Date(at);
@@ -129,7 +149,7 @@ export function formatAxisTime(at: number, spanMs: number): string {
     });
   }
 
-  if (spanMs <= 36 * 3_600_000) {
+  if (spanMs <= 12 * 3_600_000) {
     return when.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
@@ -137,7 +157,15 @@ export function formatAxisTime(at: number, spanMs: number): string {
     });
   }
 
-  return when.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+  const day = when.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+  if (spanMs > 4 * 86_400_000) return day;
+
+  const time = when.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${day} ${time}`;
 }
 
 /**

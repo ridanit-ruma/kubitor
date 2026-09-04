@@ -4,8 +4,8 @@ import {
   formatBytes,
   formatBytesPerSecond,
   formatCelsius,
+  formatClockPair,
   formatCount,
-  formatMhz,
   formatOfTotal,
   formatPercent,
 } from '@/lib/format';
@@ -32,6 +32,8 @@ interface Spec {
   value: string;
   /** A secondary figure that belongs to the same fact — a range, a ceiling. */
   hint?: string | undefined;
+  /** The detail behind the figure, for a reader who goes looking. */
+  title?: string | undefined;
 }
 
 /**
@@ -54,7 +56,7 @@ function Specs({ items }: { items: readonly (Spec | null | undefined)[] }) {
           <dt className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {item.label}
           </dt>
-          <dd className="truncate font-mono text-xs tabular">
+          <dd className="truncate font-mono text-xs tabular" title={item.title}>
             {item.value}
             {item.hint && <span className="ml-1.5 text-muted-foreground">{item.hint}</span>}
           </dd>
@@ -88,19 +90,28 @@ function Card({
   );
 }
 
+/**
+ * One number for a part's temperature.
+ *
+ * A processor reports a package sensor and one per core, and printing the
+ * headline next to its range put three temperatures on a line that answers a
+ * question with one. The range is what a reader asks for second, so it waits in
+ * the hover text.
+ */
 function Temperature({ summary }: { summary: SensorSummary | null }) {
   if (!summary) return null;
 
   return (
-    <span className="font-mono text-xs tabular">
+    <span className="font-mono text-xs tabular" title={sensorRange(summary)}>
       {formatCelsius(summary.celsius)}
-      {summary.count > 1 && (
-        <span className="ml-2 text-muted-foreground">
-          {formatCelsius(summary.lowest)}–{formatCelsius(summary.highest)}
-        </span>
-      )}
     </span>
   );
+}
+
+/** The detail a single temperature stands for. */
+function sensorRange(summary: SensorSummary): string | undefined {
+  if (summary.count < 2) return undefined;
+  return `${summary.count} sensors, ${formatCelsius(summary.lowest)} to ${formatCelsius(summary.highest)}`;
 }
 
 export function Processor({
@@ -141,7 +152,7 @@ export function Processor({
             : null,
           clockMhz === null
             ? null
-            : { label: 'Clock', value: formatMhz(clockMhz), hint: `of ${formatMhz(clockMaxMhz)}` },
+            : { label: 'Clock', value: formatClockPair(clockMhz, clockMaxMhz) },
           loadPercent === null ? null : { label: 'Load', value: formatPercent(loadPercent, 0) },
           cpu?.governor ? { label: 'Governor', value: cpu.governor } : null,
           cache('L1d'),
@@ -328,10 +339,7 @@ export function Storage({
                     ? {
                         label: 'Temp',
                         value: formatCelsius(temperature.celsius),
-                        hint:
-                          temperature.count > 1
-                            ? `${formatCelsius(temperature.lowest)}–${formatCelsius(temperature.highest)}`
-                            : undefined,
+                        title: sensorRange(temperature),
                       }
                     : null,
                   device.linkSpeed
@@ -402,8 +410,7 @@ export function Graphics({ gpus }: { gpus: readonly GpuInfo[] }) {
                 {[gpu.vendor, gpu.driver].filter(Boolean).join(' ') || gpu.card}
               </span>
               <span className="shrink-0 font-mono text-sm tabular">
-                {formatMhz(gpu.mhzCur)}
-                <span className="text-muted-foreground"> / {formatMhz(gpu.mhzMax)}</span>
+                {formatClockPair(gpu.mhzCur, gpu.mhzMax)}
               </span>
             </div>
             <Bar
@@ -431,7 +438,7 @@ export function Graphics({ gpus }: { gpus: readonly GpuInfo[] }) {
                 },
                 gpu.memMhzCur === null
                   ? null
-                  : { label: 'Mem clock', value: formatMhz(gpu.memMhzCur) },
+                  : { label: 'Mem clock', value: formatClockPair(gpu.memMhzCur, gpu.memMhzMax) },
                 gpu.busyPercent === null
                   ? null
                   : { label: 'Busy', value: formatPercent(gpu.busyPercent, 0) },
