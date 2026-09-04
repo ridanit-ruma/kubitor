@@ -1,5 +1,21 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readdir, readFile, readlink } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+
+export interface SensorReading {
+  /** Driver name: `coretemp`, `nvme`, `iwlwifi_1`. */
+  chip: string;
+  /**
+   * The device the chip belongs to, where it can be resolved.
+   *
+   * Two NVMe drives both call their chip `nvme`, so the chip name alone cannot
+   * tell them apart — and keyed by chip alone, one drive's reading silently
+   * replaced the other's. This is `nvme0` or `nvme1`, which a block device name
+   * begins with.
+   */
+  device: string | null;
+  label: string;
+  celsius: number;
+}
 
 export interface HardwareReading {
   /** Sensor label to degrees Celsius. */
@@ -18,8 +34,8 @@ const CPUINFO = '/proc/cpuinfo';
  * and coercing that to zero puts a false reading on the dashboard and can fire
  * a "suspiciously cold" alert.
  */
-export async function readHwmonTemperatures(root = HWMON_ROOT): Promise<Record<string, number>> {
-  const temps: Record<string, number> = {};
+export async function readHwmonTemperatures(root = HWMON_ROOT): Promise<SensorReading[]> {
+  const readings: SensorReading[] = [];
 
   let chips: string[];
   try {
@@ -27,12 +43,13 @@ export async function readHwmonTemperatures(root = HWMON_ROOT): Promise<Record<s
   } catch {
     // No hwmon at all: a container without the host sysfs, or a platform that
     // has none. Reporting nothing is correct.
-    return temps;
+    return readings;
   }
 
-  for (const chip of chips) {
+  for (const chip of chips.sort()) {
     const chipDir = join(root, chip);
     const chipName = (await maybeRead(join(chipDir, 'name')))?.trim() ?? chip;
+    const device = await deviceOf(chipDir);
 
     let entries: string[];
     try {
@@ -41,7 +58,7 @@ export async function readHwmonTemperatures(root = HWMON_ROOT): Promise<Record<s
       continue;
     }
 
-    for (const entry of entries) {
+    for (const entry of entries.sort()) {
       const match = /^temp(\d+)_input$/.exec(entry);
       if (!match) continue;
 
@@ -51,10 +68,35 @@ export async function readHwmonTemperatures(root = HWMON_ROOT): Promise<Record<s
 
       const label =
         (await maybeRead(join(chipDir, `temp${match[1]}_label`)))?.trim() ?? `temp${match[1]}`;
-      temps[`${chipName}.${label}`] = celsius;
+      readings.push({ chip: chipName, device, label, celsius });
     }
   }
 
+  return readings;
+}
+
+/** `.../nvme/nvme1` becomes `nvme1`, which `nvme1n1` begins with. */
+async function deviceOf(chipDir: string): Promise<string | null> {
+  try {
+    const target = await readlink(join(chipDir, 'device'));
+    const name = basename(resolve(chipDir, target));
+    return name.length > 0 ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sensors as a flat record, for the history facet.
+ *
+ * Keyed by device where there is one, so two drives reporting the same chip
+ * name keep their own readings instead of one overwriting the other.
+ */
+export function sensorRecord(readings: readonly SensorReading[]): Record<string, number> {
+  const temps: Record<string, number> = {};
+  for (const reading of readings) {
+    temps[`${reading.device ?? reading.chip}.${reading.label}`] = reading.celsius;
+  }
   return temps;
 }
 
@@ -87,7 +129,7 @@ export async function readCpuMhz(path = CPUINFO): Promise<number | null> {
 }
 
 export async function readHardware(): Promise<HardwareReading> {
-  return { temps: await readHwmonTemperatures(), cpuMhz: await readCpuMhz() };
+  return { temps: sensorRecord(await readHwmonTemperatures()), cpuMhz: await readCpuMhz() };
 }
 
 async function maybeRead(path: string): Promise<string | null> {

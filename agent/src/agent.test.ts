@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { milliCelsiusToCelsius, readCpuMhz, readHwmonTemperatures } from './hwmon.js';
+import { milliCelsiusToCelsius, readCpuMhz, readHwmonTemperatures, sensorRecord } from './hwmon.js';
 import { decideRetry, Sender } from './sender.js';
 
 describe('milliCelsiusToCelsius', () => {
@@ -44,20 +44,42 @@ describe('readHwmonTemperatures', () => {
   }
 
   it('labels each reading by chip and sensor', async () => {
-    const temps = await readHwmonTemperatures(fakeHwmon());
+    const temps = sensorRecord(await readHwmonTemperatures(fakeHwmon()));
 
     expect(temps['coretemp.Package id 0']).toBe(41.5);
     expect(temps['coretemp.temp2']).toBe(39);
   });
 
   it('omits a sensor it could not read', async () => {
-    const temps = await readHwmonTemperatures(fakeHwmon());
+    const temps = sensorRecord(await readHwmonTemperatures(fakeHwmon()));
 
     expect(Object.keys(temps)).not.toContain('iwlwifi_1.temp1');
   });
 
+  /**
+   * Two NVMe drives both call their chip `nvme`. Keyed by chip alone, the
+   * second drive's reading silently replaced the first's.
+   */
+  it('keeps two chips of the same name apart', () => {
+    const temps = sensorRecord([
+      { chip: 'nvme', device: 'nvme0', label: 'Composite', celsius: 44.9 },
+      { chip: 'nvme', device: 'nvme1', label: 'Composite', celsius: 38.9 },
+    ]);
+
+    expect(temps['nvme0.Composite']).toBe(44.9);
+    expect(temps['nvme1.Composite']).toBe(38.9);
+  });
+
+  it('falls back to the chip name where no device resolves', () => {
+    const temps = sensorRecord([
+      { chip: 'coretemp', device: null, label: 'Package id 0', celsius: 41.5 },
+    ]);
+
+    expect(temps['coretemp.Package id 0']).toBe(41.5);
+  });
+
   it('reports nothing rather than failing where there is no hwmon', async () => {
-    expect(await readHwmonTemperatures('/nonexistent/hwmon')).toEqual({});
+    expect(await readHwmonTemperatures('/nonexistent/hwmon')).toEqual([]);
   });
 });
 

@@ -31,6 +31,12 @@ export interface CpuDetail {
   caches: CpuCache[];
 }
 
+export interface MemoryInventory {
+  modules: MemoryModule[];
+  /** Slots the controller knows about, populated or not. */
+  slots: number;
+}
+
 export interface MemoryModule {
   /** `MC#0_Chan#0_DIMM#0` — which controller, channel and slot. */
   slot: string;
@@ -136,30 +142,33 @@ async function readCaches(root: string): Promise<CpuCache[]> {
  * how large, what type — is the part that answers "can I add more memory", and
  * it is world-readable.
  */
-export async function readMemoryModules(root = EDAC_ROOT): Promise<MemoryModule[]> {
+export async function readMemoryModules(root = EDAC_ROOT): Promise<MemoryInventory> {
   let controllers: string[];
   try {
     controllers = (await readdir(root)).filter((name) => /^mc\d+$/.test(name));
   } catch {
-    return [];
+    return { modules: [], slots: 0 };
   }
 
   const modules: MemoryModule[] = [];
+  let slots = 0;
 
   for (const controller of controllers.sort()) {
     const base = join(root, controller);
 
-    let slots: string[];
+    let found: string[];
     try {
-      slots = (await readdir(base)).filter((name) => /^(dimm|rank)\d+$/.test(name));
+      found = (await readdir(base)).filter((name) => /^dimm\d+$/.test(name));
     } catch {
       continue;
     }
 
-    for (const slot of slots.sort()) {
+    for (const slot of found.sort()) {
       const dir = join(base, slot);
+      slots += 1;
+
       // EDAC reports size in mebibytes. An empty slot reports zero, and an
-      // empty slot is not a module.
+      // empty slot is a slot but not a module.
       const megabytes = Number((await maybeRead(join(dir, 'size')))?.trim());
       if (!Number.isFinite(megabytes) || megabytes <= 0) continue;
 
@@ -172,7 +181,7 @@ export async function readMemoryModules(root = EDAC_ROOT): Promise<MemoryModule[
     }
   }
 
-  return modules;
+  return { modules, slots };
 }
 
 function integer(raw: string | null): number | null {

@@ -3,8 +3,13 @@ import { readCpu } from './cpufreq.js';
 import { createCpuMeter } from './cpustat.js';
 import { type DiskReading, readDisks } from './disks.js';
 import { readGpus } from './gpu.js';
-import { type CpuDetail, type MemoryModule, readCpuDetail, readMemoryModules } from './hwinfo.js';
-import { readHwmonTemperatures } from './hwmon.js';
+import {
+  type CpuDetail,
+  type MemoryInventory,
+  readCpuDetail,
+  readMemoryModules,
+} from './hwinfo.js';
+import { readHwmonTemperatures, type SensorReading, sensorRecord } from './hwmon.js';
 import { readMemory } from './meminfo.js';
 import { createNetworkMeter } from './netdev.js';
 
@@ -42,9 +47,14 @@ export interface HostReading extends Record<string, unknown> {
   /** What the machine is, as opposed to what it is doing. */
   cpu: Record<string, unknown> | null;
   memory_modules: Record<string, unknown>[];
+  /** Slots the controller knows about, so "8 of 8" can be said. */
+  memory_slots: number | null;
   nics: Record<string, unknown>[];
   block_devices: Record<string, unknown>[];
+  /** Flat, for history. Keyed by device so two drives do not collide. */
   temps: Record<string, number>;
+  /** The same readings with the device they belong to, for the screens. */
+  sensors: Record<string, unknown>[];
 }
 
 /**
@@ -57,7 +67,7 @@ export interface HostReading extends Record<string, unknown> {
 export function createHostCollector(node: string, diskRefreshMs = 15_000) {
   let disks: DiskReading[] = [];
   let disksReadAt = 0;
-  let inventory: { cpu: CpuDetail; modules: MemoryModule[] } | null = null;
+  let inventory: { cpu: CpuDetail; memory: MemoryInventory } | null = null;
 
   const cpuBusy = createCpuMeter();
   const network = createNetworkMeter();
@@ -71,9 +81,12 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
 
     // What the machine is does not change while it is running, so it is read
     // once and kept. What it is doing is read every time.
-    inventory ??= { cpu: await readCpuDetail(), modules: await readMemoryModules() };
+    if (inventory === null) {
+      inventory = { cpu: await readCpuDetail(), memory: await readMemoryModules() };
+    }
+    const machine = inventory;
 
-    const [cpu, cpuPercent, memory, gpus, temps, nics, blocks] = await Promise.all([
+    const [cpu, cpuPercent, memory, gpus, sensors, nics, blocks] = await Promise.all([
       readCpu(),
       cpuBusy(),
       readMemory(),
@@ -116,11 +129,13 @@ export function createHostCollector(node: string, diskRefreshMs = 15_000) {
       net_tx_bytes_per_second: sumRates(nics.map((nic) => nic.txBytesPerSecond)),
       gpus: gpus.map((gpu) => ({ ...gpu })),
       disks: disks.map((disk) => ({ ...disk })),
-      cpu: { ...inventory.cpu },
-      memory_modules: inventory.modules.map((module) => ({ ...module })),
+      cpu: { ...machine.cpu },
+      memory_modules: machine.memory.modules.map((module) => ({ ...module })),
+      memory_slots: machine.memory.slots,
       nics: nics.map((nic) => ({ ...nic })),
       block_devices: blocks.map((device: BlockDevice) => ({ ...device })),
-      temps,
+      temps: sensorRecord(sensors),
+      sensors: sensors.map((sensor: SensorReading) => ({ ...sensor })),
     };
   };
 }
