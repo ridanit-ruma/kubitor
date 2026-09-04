@@ -103,6 +103,7 @@ export function coreIntegration(api: KubeApi, sampleSink: NodeSampleSink): Integ
                   kind: 'Pod',
                   node: pod.node,
                   phase: pod.phase,
+                  reason: pod.reason,
                   ready: pod.ready ? 1 : 0,
                   restarts: pod.restarts,
                   images: pod.images.join(','),

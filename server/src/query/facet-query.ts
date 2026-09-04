@@ -2,6 +2,7 @@ import { type Kysely, sql } from 'kysely';
 import type { DialectSql } from '../db/dialect.js';
 import type { Database } from '../db/schema.js';
 import { type FacetDescriptor, facetDescriptor } from '../plugins/facets.js';
+import { type ClusterSummary, clusterSummary } from './cluster-summary.js';
 
 export interface QueryFilters {
   /** Column equality filters; only whitelisted columns are honoured. */
@@ -39,8 +40,8 @@ const QUERYABLE: Record<string, { filter: readonly string[]; search: readonly st
   },
   nodes: { filter: ['integration', 'ready'], search: ['name', 'os_image', 'kubelet_version'] },
   workloads: {
-    filter: ['integration', 'namespace', 'node', 'phase', 'kind', 'owner_kind'],
-    search: ['name', 'images', 'owner_name'],
+    filter: ['integration', 'namespace', 'node', 'phase', 'reason', 'kind', 'owner_kind'],
+    search: ['name', 'images', 'owner_name', 'reason'],
   },
   events: {
     filter: ['integration', 'namespace', 'type', 'kind', 'reason'],
@@ -69,6 +70,11 @@ export class FacetQuery {
 
   descriptorFor(facet: string): FacetDescriptor | undefined {
     return facetDescriptor(facet);
+  }
+
+  /** The cluster in a dozen numbers, counted in the database. */
+  async summary(now: number): Promise<ClusterSummary> {
+    return clusterSummary(this.#db, now);
   }
 
   async run(facet: string, filters: QueryFilters): Promise<QueryResult> {

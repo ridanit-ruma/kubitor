@@ -85,9 +85,9 @@ export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="px-3 py-4">
+      <SidebarHeader className="px-3 py-3">
         <Link href="/" className="flex items-baseline gap-2">
-          <span className="text-lg font-semibold tracking-tight">kubitor</span>
+          <span className="text-base font-semibold tracking-tight">kubitor</span>
           {manifest && (
             // kubitor's own build. The cluster's version belongs to the cluster,
             // and printing it here made it read as the product's.

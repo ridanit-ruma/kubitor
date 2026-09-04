@@ -49,7 +49,7 @@ export function Series({
 
   if (usable.length < 2) {
     return (
-      <figure className="rounded-lg border border-line bg-card p-4">
+      <figure className="rounded-lg border border-line bg-card p-3">
         <Header title={title} reading={format(latest?.value ?? null)} />
         <p className="mt-6 text-center text-sm text-muted-foreground">Not enough readings yet.</p>
       </figure>
@@ -87,7 +87,7 @@ export function Series({
   const shown = hover ?? latest;
 
   return (
-    <figure className="rounded-lg border border-line bg-card p-4">
+    <figure className="rounded-lg border border-line bg-card p-3">
       <Header
         title={title}
         reading={format(shown?.value ?? null)}

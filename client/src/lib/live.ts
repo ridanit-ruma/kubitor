@@ -266,6 +266,57 @@ export function useLiveHistory(
   return track.node === node ? track.samples : [];
 }
 
+/** The whole cluster at one instant, for a chart that spans it. */
+export interface ClusterSample {
+  at: number;
+  rxBytesPerSecond: number | null;
+  txBytesPerSecond: number | null;
+}
+
+/**
+ * A rolling tail of the cluster's throughput.
+ *
+ * The same idea as the per-node tail, summed: the overview has no stored series
+ * of its own, and a figure with no history behind it cannot say whether what it
+ * shows is normal. Lives only as long as the page.
+ */
+export function useClusterHistory(live: LiveState, windowMs = 15 * 60_000): ClusterSample[] {
+  const [samples, setSamples] = useState<ClusterSample[]>([]);
+  const { nodes, sampledAt } = live;
+
+  useEffect(() => {
+    if (nodes.length === 0 || sampledAt === null) return;
+
+    setSamples((previous) => {
+      if (previous.at(-1)?.at === sampledAt) return previous;
+
+      const reading: ClusterSample = {
+        at: sampledAt,
+        rxBytesPerSecond: total(nodes.map((node) => rateOf(node, 'rx'))),
+        txBytesPerSecond: total(nodes.map((node) => rateOf(node, 'tx'))),
+      };
+
+      const cutoff = sampledAt - windowMs;
+      return [...previous.filter((sample) => sample.at > cutoff), reading];
+    });
+  }, [nodes, sampledAt, windowMs]);
+
+  return samples;
+}
+
+/** The agent's own measurement where it runs, the kubelet's derived rate where it does not. */
+function rateOf(node: LiveNodeMetrics, direction: 'rx' | 'tx'): number | null {
+  return direction === 'rx'
+    ? (node.host?.netRxBytesPerSecond ?? node.netRxBytesPerSecond)
+    : (node.host?.netTxBytesPerSecond ?? node.netTxBytesPerSecond);
+}
+
+/** Null unless something answered: a sum of nothing is not zero. */
+function total(values: readonly (number | null)[]): number | null {
+  const usable = values.filter((value): value is number => value !== null);
+  return usable.length === 0 ? null : usable.reduce((sum, value) => sum + value, 0);
+}
+
 /**
  * The agent's figures where it runs, the kubelet's where it does not.
  *

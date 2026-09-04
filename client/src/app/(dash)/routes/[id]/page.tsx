@@ -127,7 +127,7 @@ export default function RouteDetailPage() {
             Routes
           </Link>
         </Button>
-        <h1 className="font-mono text-lg font-semibold tracking-tight">
+        <h1 className="font-mono text-base font-semibold tracking-tight">
           {key.host}
           <span className="text-muted-foreground">{key.path}</span>
         </h1>

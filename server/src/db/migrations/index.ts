@@ -9,6 +9,7 @@ import { hostResourcesMigration } from './0006-host-resources.js';
 import { cpuUtilizationMigration } from './0007-cpu-utilization.js';
 import { hostInventoryMigration } from './0008-host-inventory.js';
 import { sensorsMigration } from './0009-sensors.js';
+import { podReasonMigration } from './0010-pod-reason.js';
 
 /**
  * One ordered chain for both dialects. Keys sort lexicographically and are the
@@ -25,5 +26,6 @@ export function createMigrations(dialect: DialectSql): Record<string, Migration>
     '0007-cpu-utilization': cpuUtilizationMigration(dialect),
     '0008-host-inventory': hostInventoryMigration(dialect),
     '0009-sensors': sensorsMigration(dialect),
+    '0010-pod-reason': podReasonMigration(dialect),
   };
 }

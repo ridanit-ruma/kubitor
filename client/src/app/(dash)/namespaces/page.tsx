@@ -55,7 +55,7 @@ export default function NamespacesPage() {
 
   return (
     <div className="screen gap-3">
-      <h1 className="text-lg font-semibold tracking-tight">Namespaces</h1>
+      <h1 className="text-base font-semibold tracking-tight">Namespaces</h1>
 
       <div className="pane rounded-lg border border-line">
         <Table className="table-fixed">

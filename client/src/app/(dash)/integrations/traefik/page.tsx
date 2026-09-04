@@ -87,7 +87,7 @@ export default function TraefikRoutersPage() {
     <div className="screen gap-3">
       <div>
         <div className="flex flex-wrap items-baseline gap-x-3">
-          <h1 className="text-lg font-semibold tracking-tight">Traefik routers</h1>
+          <h1 className="text-base font-semibold tracking-tight">Traefik routers</h1>
           {traefik?.version && (
             <span className="font-mono text-xs text-muted-foreground">{traefik.version}</span>
           )}

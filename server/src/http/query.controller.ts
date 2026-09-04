@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { LiveCache, LiveNodeMetrics } from '../collect/live-cache.js';
 import type { HostSeriesPoint, NodeSamplesRepo, SeriesPoint } from '../db/node-samples.repo.js';
 import { counterRate } from '../kube/rates.js';
+import type { ClusterSummary } from '../query/cluster-summary.js';
 import { csvRow } from '../query/csv.js';
 import type { FacetQuery, QueryFilters } from '../query/facet-query.js';
 import { LIVE_CACHE, NODE_SAMPLES, QUERY_SERVICE } from '../tokens.js';
@@ -100,6 +101,18 @@ export class QueryController {
   current(): { generatedAt: number; nodes: LiveNodeMetrics[] } {
     const now = Date.now();
     return { generatedAt: now, nodes: this.#cache.current(now) };
+  }
+
+  /**
+   * The overview screen's one question: what is this cluster doing.
+   *
+   * Counted per request rather than cached: these are five aggregates over
+   * tables holding thousands of rows, and a stale answer on the screen an
+   * operator opens first is worse than the microseconds it costs.
+   */
+  @Get('overview')
+  async overview(): Promise<ClusterSummary> {
+    return this.#query.summary(Date.now());
   }
 
   @Get('facets/:facet')

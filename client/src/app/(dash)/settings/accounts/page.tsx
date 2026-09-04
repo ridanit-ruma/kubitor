@@ -54,7 +54,7 @@ export default function AccountsPage() {
             Integrations
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Accounts</h1>
+        <h1 className="text-base font-semibold tracking-tight">Accounts</h1>
         <Button size="sm" className="ml-auto" onClick={() => setPending({ kind: 'create' })}>
           <UserPlus className="size-3.5" />
           Add account

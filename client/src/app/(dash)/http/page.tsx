@@ -106,7 +106,7 @@ export default function HttpTrafficPage() {
   return (
     <div className="screen gap-3">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">HTTP traffic</h1>
+        <h1 className="text-base font-semibold tracking-tight">HTTP traffic</h1>
         <p className="text-sm text-muted-foreground">
           Requests as the ingress saw them. kubitor&rsquo;s own traffic is hidden by default — clear
           the second box to include it.

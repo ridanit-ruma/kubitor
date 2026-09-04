@@ -11,6 +11,7 @@ interface WorkloadRow extends Record<string, unknown> {
   name: string;
   node: string | null;
   phase: string;
+  reason: string | null;
   ready: number;
   restarts: number;
   images: string;
@@ -35,12 +36,14 @@ const columns: Column<WorkloadRow>[] = [
   },
   {
     key: 'phase',
-    header: 'Phase',
-    width: 'w-[28%] sm:w-[11%]',
+    header: 'Status',
+    width: 'w-[28%] sm:w-[13%]',
+    // What `kubectl` puts in this column: the reason where there is one, since
+    // `Pending` says nothing about whether to wait or to go and look.
     render: (row) => (
       <Badge variant={row.phase === 'Running' && row.ready === 1 ? 'secondary' : 'outline'}>
-        {row.phase}
-        {row.ready === 1 ? '' : ' · not ready'}
+        {row.reason ?? row.phase}
+        {row.reason === null && row.ready === 0 && row.phase === 'Running' ? ' · not ready' : ''}
       </Badge>
     ),
   },
@@ -101,7 +104,7 @@ export default function WorkloadsPage() {
 
   return (
     <div className="screen gap-3">
-      <h1 className="text-lg font-semibold tracking-tight">Workloads</h1>
+      <h1 className="text-base font-semibold tracking-tight">Workloads</h1>
       <FacetTable<WorkloadRow>
         facet="workloads"
         columns={columns}
@@ -111,7 +114,7 @@ export default function WorkloadsPage() {
           { key: 'phase', label: 'Phases', values: ['Running', 'Pending', 'Succeeded', 'Failed'] },
         ]}
         searchPlaceholder="Find a pod by name, image or owner"
-        detailFields={['owner_kind', 'owner_name', 'ready', 'kind', 'integration']}
+        detailFields={['reason', 'owner_kind', 'owner_name', 'ready', 'kind', 'integration']}
         emptyMessage="No pod matches these filters."
       />
     </div>

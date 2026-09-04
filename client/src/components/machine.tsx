@@ -78,7 +78,7 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-lg border border-line bg-card px-4 py-3 ${className ?? ''}`}>
+    <section className={`rounded-lg border border-line bg-card px-3.5 py-2.5 ${className ?? ''}`}>
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           {title}
@@ -144,7 +144,7 @@ export function Processor({
 
   return (
     <Card title="Processor" right={<Temperature summary={cpuSensors(sensors)} />}>
-      <p className="mt-1 font-mono text-2xl font-medium tabular">{formatPercent(percent)}</p>
+      <p className="mt-0.5 font-mono text-xl font-medium tabular">{formatPercent(percent)}</p>
       <Bar percent={percent} />
 
       {cpu?.model && <p className="mt-2 truncate text-sm">{cpu.model}</p>}
@@ -222,7 +222,7 @@ export function Memory({
         </span>
       }
     >
-      <p className="mt-1 font-mono text-2xl font-medium tabular">
+      <p className="mt-0.5 font-mono text-xl font-medium tabular">
         {formatOfTotal(usedBytes, totalBytes)}
       </p>
       <Bar percent={percent} />

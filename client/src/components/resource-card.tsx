@@ -28,7 +28,9 @@ export function ResourceCard({
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-col rounded-lg border border-line bg-card px-4 py-3', className)}>
+    <div
+      className={cn('flex flex-col rounded-lg border border-line bg-card px-3.5 py-2.5', className)}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           {label}
@@ -45,7 +47,7 @@ export function ResourceCard({
         )}
       </div>
 
-      <p className="mt-1 font-mono text-xl font-medium tabular">{headline}</p>
+      <p className="mt-1 font-mono text-lg font-medium tabular">{headline}</p>
 
       {percent !== undefined && <Bar percent={percent} tone={tone} />}
 

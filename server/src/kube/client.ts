@@ -102,6 +102,7 @@ export class KubeClient implements KubeApi {
         name: pod.metadata?.name ?? '',
         node: pod.spec?.nodeName ?? null,
         phase: pod.status?.phase ?? 'Unknown',
+        reason: waitingReason(pod.status?.phase ?? null, statuses),
         ready: statuses.length > 0 && statuses.every((status) => status.ready),
         restarts: statuses.reduce((total, status) => total + (status.restartCount ?? 0), 0),
         images: (pod.spec?.containers ?? []).map((container) => container.image ?? ''),
@@ -285,4 +286,36 @@ function toEpoch(value: Date | string | undefined): number {
   if (!value) return 0;
   const parsed = value instanceof Date ? value.getTime() : Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * What `kubectl get pods` prints in its STATUS column when it is not `Running`.
+ *
+ * A pod's phase says `Pending` whether it is waiting on an image, waiting on a
+ * volume, or restarting every ten seconds because it crashes on boot. The
+ * reason is the difference between those, and it lives on the container that
+ * is not running — the first one, because a pod that is broken twice is still
+ * one problem to look at.
+ */
+export function waitingReason(
+  phase: string | null,
+  statuses: readonly {
+    state?: { waiting?: { reason?: string }; terminated?: { reason?: string } };
+  }[],
+): string | null {
+  if (phase === 'Succeeded') return null;
+
+  for (const status of statuses) {
+    const waiting = status.state?.waiting?.reason;
+    if (waiting) return waiting;
+  }
+
+  for (const status of statuses) {
+    const terminated = status.state?.terminated?.reason;
+    // A container that finished cleanly inside a pod that is still running is
+    // an init container doing its job, not a fault.
+    if (terminated && terminated !== 'Completed') return terminated;
+  }
+
+  return null;
 }

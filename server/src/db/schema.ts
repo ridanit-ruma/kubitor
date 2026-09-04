@@ -128,6 +128,8 @@ export interface FacetWorkloadsTable {
   kind: string;
   node: string | null;
   phase: string;
+  /** `CrashLoopBackOff`, `ImagePullBackOff` — why it is not running. */
+  reason: string | null;
   ready: number;
   restarts: number;
   images: string;

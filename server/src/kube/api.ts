@@ -60,6 +60,13 @@ export interface PodInfo {
   name: string;
   node: string | null;
   phase: string;
+  /**
+   * Why the pod is not running, from the container that is not running.
+   *
+   * Null for a pod that is doing what it should. `phase` alone cannot say
+   * this: a crash loop and a missing image are both `Pending`.
+   */
+  reason: string | null;
   ready: boolean;
   restarts: number;
   images: string[];

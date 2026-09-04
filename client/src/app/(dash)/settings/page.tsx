@@ -50,7 +50,7 @@ export default function IntegrationsPage() {
   return (
     <div className="screen gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight">Integrations</h1>
+        <h1 className="text-base font-semibold tracking-tight">Integrations</h1>
         <Link
           href="/settings/accounts"
           className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"

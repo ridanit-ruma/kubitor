@@ -53,6 +53,8 @@ export const api = {
 
   capabilities: () => request<CapabilityManifest>('/api/capabilities'),
 
+  overview: () => request<ClusterSummary>('/api/overview'),
+
   rescan: () => request<CapabilityManifest>('/api/capabilities/rescan', { method: 'POST' }),
 
   setOverride: (id: string, override: 'auto' | 'force_on' | 'force_off') =>
@@ -106,6 +108,31 @@ export function exportHref(facet: string, query: URLSearchParams, format: 'json'
   const params = new URLSearchParams(query);
   params.set('format', format);
   return `/api/export/${facet}?${params.toString()}`;
+}
+
+/**
+ * The cluster in the numbers an overview answers with.
+ *
+ * Counted by the server across every row, not by tallying a page of workloads
+ * in the browser — which would have made "how many pods are running" a
+ * question about the first hundred.
+ */
+export interface ClusterSummary {
+  nodes: { total: number; ready: number };
+  pods: {
+    total: number;
+    running: number;
+    pending: number;
+    succeeded: number;
+    failed: number;
+    /** Running, without every container in them being ready. */
+    degraded: number;
+    /** Why pods are not running, worst first. */
+    troubled: { reason: string; count: number }[];
+  };
+  capacity: { cpuMilli: number; memoryBytes: number; pods: number };
+  /** Warning events in the last hour. */
+  warnings: number;
 }
 
 export interface LiveNodeMetrics {

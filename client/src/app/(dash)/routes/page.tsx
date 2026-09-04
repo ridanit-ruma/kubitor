@@ -84,7 +84,7 @@ export default function RoutesPage() {
   return (
     <div className="screen gap-3">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Routes</h1>
+        <h1 className="text-base font-semibold tracking-tight">Routes</h1>
         <p className="text-sm text-muted-foreground">
           Every address the cluster answers on. Open one to see its definition and the requests it
           has served.

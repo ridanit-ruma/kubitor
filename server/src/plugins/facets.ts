@@ -83,6 +83,8 @@ const workloads = z.object({
   kind: text(64),
   node: text(253).nullish(),
   phase: text(32),
+  /** The waiting container's reason, which is what `kubectl` shows as STATUS. */
+  reason: text(128).nullish(),
   ready: z.number().int().min(0).max(1),
   restarts: z.number().int().min(0),
   images: text(MAX_TEXT),
