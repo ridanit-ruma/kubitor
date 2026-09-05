@@ -9,6 +9,7 @@ import {
   formatCpu,
   formatDuration,
   formatPercent,
+  formatPointTime,
   niceCeiling,
 } from './format';
 
@@ -171,5 +172,19 @@ describe('formatAxisTime', () => {
 
   it('drops the time again when a week is on screen', () => {
     expect(formatAxisTime(at, 7 * 86_400_000)).not.toMatch(/:/);
+  });
+});
+
+describe('formatPointTime', () => {
+  const at = Date.parse('2026-09-05T10:21:29Z');
+
+  /** The label under a cursor is a reading, so it counts seconds. */
+  it('names the second inside a window measured in hours', () => {
+    expect(formatPointTime(at, 3_600_000)).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+
+  /** Past a day the axis no longer says which one, so the label has to. */
+  it('names the day once the window covers more than one', () => {
+    expect(formatPointTime(at, 7 * 86_400_000)).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 });

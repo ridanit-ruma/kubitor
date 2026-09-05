@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { formatAxisTime, formatTimestamp, niceCeiling } from '@/lib/format';
+import { formatAxisTime, formatPointTime, niceCeiling } from '@/lib/format';
 
 export interface SeriesValue {
   at: number;
@@ -42,7 +42,14 @@ export function Series({
   height?: number;
 }) {
   const gradientId = useId();
-  const [hover, setHover] = useState<SeriesValue | null>(null);
+  /**
+   * What the cursor is over, and where the cursor is.
+   *
+   * The reading is the nearest sample; the position is the pointer's own, as a
+   * share of the plot, so the label can follow the hand rather than jumping
+   * between sample columns.
+   */
+  const [hover, setHover] = useState<{ point: SeriesValue; x: number; y: number } | null>(null);
 
   const usable = points.filter((point) => point.value !== null);
   const latest = points.at(-1) ?? null;
@@ -84,15 +91,16 @@ export function Series({
   }
   if (current.length > 1) segments.push(current.join(' '));
 
-  const shown = hover ?? latest;
-
   return (
     <figure className="rounded-lg border border-line bg-card p-3">
-      <Header
-        title={title}
-        reading={format(shown?.value ?? null)}
-        when={hover ? formatTimestamp(hover.at) : undefined}
-      />
+      {/*
+        The heading keeps saying what the reading is now. It used to be
+        rewritten to whatever the cursor was over, so moving the mouse changed
+        the number a reader had come to the screen to watch — and the moment
+        they looked away from the cursor they had no idea which of the two they
+        were looking at.
+      */}
+      <Header title={title} reading={format(latest?.value ?? null)} />
 
       <div className="mt-3 flex gap-2">
         <div
@@ -104,80 +112,106 @@ export function Series({
           <span>{format(0)}</span>
         </div>
 
-        <svg
-          role="img"
-          aria-label={`${title} over time`}
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          className="w-full"
-          style={{ height }}
-          onMouseLeave={() => setHover(null)}
-          onMouseMove={(event) => {
-            const box = event.currentTarget.getBoundingClientRect();
-            const ratio = (event.clientX - box.left) / box.width;
-            const at = minAt + ratio * span;
-            const nearest = points.reduce((best, point) =>
-              Math.abs(point.at - at) < Math.abs(best.at - at) ? point : best,
-            );
-            setHover(nearest);
-          }}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--signal)" stopOpacity="0.28" />
-              <stop offset="100%" stopColor="var(--signal)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
+        {/* The anchor the floating label is positioned against. */}
+        <div className="relative min-w-0 flex-1">
+          <svg
+            role="img"
+            aria-label={`${title} over time`}
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            className="w-full"
+            style={{ height }}
+            onMouseLeave={() => setHover(null)}
+            onMouseMove={(event) => {
+              const box = event.currentTarget.getBoundingClientRect();
+              const x = (event.clientX - box.left) / box.width;
+              const y = (event.clientY - box.top) / box.height;
+              const at = minAt + x * span;
+              const nearest = points.reduce((best, point) =>
+                Math.abs(point.at - at) < Math.abs(best.at - at) ? point : best,
+              );
+              setHover({ point: nearest, x, y });
+            }}
+          >
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--signal)" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="var(--signal)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
 
-          {/* One line per y label, so a value can be read off the chart. */}
-          {[0, height / 2, height].map((at) => (
-            <line
-              key={at}
-              x1={0}
-              x2={width}
-              y1={at}
-              y2={at}
-              stroke="var(--line)"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
-          {segments.map((segment) => (
-            <path
-              key={segment.slice(0, 24)}
-              d={`${segment} L${width},${height} L0,${height} Z`}
-              fill={`url(#${gradientId})`}
-              stroke="none"
-            />
-          ))}
-
-          {segments.map((segment) => (
-            <path
-              key={`line-${segment.slice(0, 24)}`}
-              d={segment}
-              fill="none"
-              stroke="var(--signal)"
-              strokeWidth={1.5}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
-          {hover?.value != null && (
-            <>
+            {/* One line per y label, so a value can be read off the chart. */}
+            {[0, height / 2, height].map((at) => (
               <line
-                x1={x(hover.at)}
-                x2={x(hover.at)}
+                key={at}
+                x1={0}
+                x2={width}
+                y1={at}
+                y2={at}
+                stroke="var(--line)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+
+            {segments.map((segment) => (
+              <path
+                key={segment.slice(0, 24)}
+                d={`${segment} L${width},${height} L0,${height} Z`}
+                fill={`url(#${gradientId})`}
+                stroke="none"
+              />
+            ))}
+
+            {segments.map((segment) => (
+              <path
+                key={`line-${segment.slice(0, 24)}`}
+                d={segment}
+                fill="none"
+                stroke="var(--signal)"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+
+            {hover && (
+              <line
+                x1={x(hover.point.at)}
+                x2={x(hover.point.at)}
                 y1={0}
                 y2={height}
                 stroke="var(--muted-ink)"
                 strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
               />
-              <circle cx={x(hover.at)} cy={y(hover.value)} r={3} fill="var(--signal)" />
-            </>
+            )}
+            {hover?.point.value != null && (
+              <circle cx={x(hover.point.at)} cy={y(hover.point.value)} r={3} fill="var(--signal)" />
+            )}
+          </svg>
+
+          {hover && (
+            /*
+             * Follows the pointer, and flips to its other side past the middle so
+             * the label never runs off the edge of a card — this chart is often a
+             * third of the width of a screen.
+             */
+            <div
+              aria-hidden
+              className="pointer-events-none absolute z-10 whitespace-nowrap rounded border border-line bg-popover px-1.5 py-1 font-mono text-[11px] tabular shadow-sm"
+              style={{
+                left: `${hover.x * 100}%`,
+                top: `${hover.y * 100}%`,
+                transform: `translate(${hover.x > 0.5 ? 'calc(-100% - 12px)' : '12px'}, -50%)`,
+              }}
+            >
+              {format(hover.point.value)}
+              <span className="ml-2 text-muted-foreground">
+                {formatPointTime(hover.point.at, span)}
+              </span>
+            </div>
           )}
-        </svg>
+        </div>
       </div>
 
       {/* Aligned with the plot, which starts after the label column and its gap. */}
@@ -190,24 +224,13 @@ export function Series({
   );
 }
 
-function Header({
-  title,
-  reading,
-  when,
-}: {
-  title: string;
-  reading: string;
-  when?: string | undefined;
-}) {
+function Header({ title, reading }: { title: string; reading: string }) {
   return (
     <figcaption className="flex items-baseline justify-between gap-3">
       <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
         {title}
       </span>
-      <span className="font-mono text-sm tabular">
-        {reading}
-        {when && <span className="ml-2 text-xs text-muted-foreground">{when}</span>}
-      </span>
+      <span className="font-mono text-sm tabular">{reading}</span>
     </figcaption>
   );
 }

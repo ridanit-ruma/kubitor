@@ -169,6 +169,26 @@ export function formatAxisTime(at: number, spanMs: number): string {
 }
 
 /**
+ * The instant behind one point on a chart, for the label under the cursor.
+ *
+ * More precise than the axis and less than a full timestamp: the axis has
+ * already said which hour, and the year is not what anyone is asking when they
+ * put a cursor on a spike.
+ */
+export function formatPointTime(at: number, spanMs: number): string {
+  const when = new Date(at);
+  const time = when.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  if (spanMs <= 12 * 3_600_000) return time;
+  return `${when.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })} ${time}`;
+}
+
+/**
  * A chart's top gridline, at a number worth printing.
  *
  * A ceiling of "the peak plus ten percent" puts labels like 1.37 GiB on the
