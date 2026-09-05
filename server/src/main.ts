@@ -52,6 +52,8 @@ const SAMPLE_PERSIST_INTERVAL_MS = 15_000;
 const KUBITOR_VERSION = process.env.KUBITOR_VERSION ?? 'dev';
 /** The audience the agent's projected token must carry. */
 const AGENT_TOKEN_AUDIENCE = 'kubitor';
+/** The largest ingest request accepted, with room above what the agent sends. */
+const MAX_INGEST_BODY = '1mb';
 /** The only service account whose projected token may report host metrics. */
 const AGENT_SERVICE_ACCOUNT = process.env.KUBITOR_AGENT_SERVICE_ACCOUNT ?? 'kubitor-agent';
 
@@ -274,6 +276,11 @@ async function bootstrap(): Promise<void> {
 
   // The ingress terminates TLS and sets the forwarded headers we read.
   app.set('trust proxy', true);
+  // Express defaults to 100 kB, which an agent's backlog outgrew the moment a
+  // reading started carrying memory modules, sensors, interfaces and drives:
+  // every reading buffered during a restart came back as 413 and was dropped.
+  // The agent bounds its own request at half of this.
+  app.useBodyParser('json', { limit: MAX_INGEST_BODY });
   app.enableShutdownHooks();
 
   const gateway = new LiveGateway({

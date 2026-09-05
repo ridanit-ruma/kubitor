@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { milliCelsiusToCelsius, readCpuMhz, readHwmonTemperatures, sensorRecord } from './hwmon.js';
-import { decideRetry, Sender } from './sender.js';
+import { batchWithin, decideRetry, Sender } from './sender.js';
 
 describe('milliCelsiusToCelsius', () => {
   it('converts milli-degrees to one decimal place', () => {
@@ -175,5 +175,37 @@ describe('Sender', () => {
 
   it('does nothing with an empty buffer', async () => {
     expect(await sender(500).flush()).toEqual({ advance: true, status: null });
+  });
+});
+
+describe('batchWithin', () => {
+  const row = (size: number): Record<string, unknown> => ({ pad: 'x'.repeat(size) });
+
+  /**
+   * A reading grew from a few hundred bytes to several kilobytes, and a buffer
+   * of four minutes then made a request the server refuses outright — so every
+   * reading held during a restart was lost. The bound is on the request, not on
+   * how long the server was away.
+   */
+  it('sends as many of the oldest rows as fit the budget', () => {
+    const rows = [row(100), row(100), row(100)];
+    const batch = batchWithin(rows, 260);
+
+    expect(batch).toHaveLength(2);
+    expect(batch[0]).toBe(rows[0]);
+  });
+
+  it('sends everything when everything fits', () => {
+    const rows = [row(10), row(10)];
+    expect(batchWithin(rows, 512 * 1024)).toHaveLength(2);
+  });
+
+  /** Holding it forever would wedge every reading behind it. */
+  it('sends a single oversized row rather than holding it', () => {
+    expect(batchWithin([row(2000)], 100)).toHaveLength(1);
+  });
+
+  it('has nothing to send from an empty buffer', () => {
+    expect(batchWithin([], 100)).toEqual([]);
   });
 });

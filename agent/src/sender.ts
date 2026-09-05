@@ -34,7 +34,49 @@ export interface SenderOptions {
   token: TokenSource;
   /** Rows kept while the server is unreachable, oldest dropped first. */
   maxBuffered: number;
+  /**
+   * The largest request this sender will build, in bytes of JSON.
+   *
+   * Separate from `maxBuffered` because the two bound different things: how
+   * much history survives an outage, and how much of it travels at once.
+   */
+  maxBatchBytes?: number;
   fetchImpl?: typeof fetch;
+}
+
+/**
+ * How much a single POST may carry.
+ *
+ * A reading grew from a few hundred bytes to several kilobytes as the agent
+ * learned to report memory modules, sensors, interfaces and drives, and a
+ * buffer of four minutes then made a request of over a megabyte — which the
+ * server refuses, so every reading held during a restart was lost. Bytes rather
+ * than a row count, because the row is exactly what changed.
+ */
+export const MAX_BATCH_BYTES = 512 * 1024;
+
+/**
+ * As many of the oldest rows as fit in the budget, and never fewer than one.
+ *
+ * A single row larger than the whole budget is still sent: the server will
+ * decide what to do with it, and holding it forever would wedge everything
+ * behind it.
+ */
+export function batchWithin(
+  rows: readonly Record<string, unknown>[],
+  budgetBytes: number,
+): Record<string, unknown>[] {
+  const batch: Record<string, unknown>[] = [];
+  let size = 0;
+
+  for (const row of rows) {
+    const length = JSON.stringify(row).length;
+    if (batch.length > 0 && size + length > budgetBytes) break;
+    batch.push(row);
+    size += length;
+  }
+
+  return batch;
 }
 
 export class Sender {
@@ -65,7 +107,7 @@ export class Sender {
   async flush(): Promise<SendResult> {
     if (this.#buffer.length === 0) return { advance: true, status: null };
 
-    const rows = [...this.#buffer];
+    const rows = batchWithin(this.#buffer, this.#options.maxBatchBytes ?? MAX_BATCH_BYTES);
     let status: number | null = null;
 
     const token = await this.#token();
