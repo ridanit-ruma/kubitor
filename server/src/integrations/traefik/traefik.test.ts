@@ -112,6 +112,20 @@ describe('traefik detection', () => {
     expect(detection.evidence).toContain('ingressroutes.traefik.io');
   });
 
+  /**
+   * A chart may be released under any name into any namespace, and an
+   * Ingress-only install registers no CRD at all. The IngressClass it
+   * registers is the same wherever it was put.
+   */
+  it('finds an install that matches neither a known name nor a CRD', async () => {
+    const detection = await traefikIntegration(fakeApi()).detect({
+      probes: fakeProbes({ ingressClasses: ['traefik'] }),
+    });
+
+    expect(detection.state).toBe('present');
+    expect(detection.evidence).toBe('IngressClass traefik');
+  });
+
   it('finds Traefik wherever the chart put it', async () => {
     const detection = await traefikIntegration(fakeApi()).detect({
       probes: fakeProbes({

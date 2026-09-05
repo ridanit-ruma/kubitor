@@ -18,7 +18,10 @@ describe('loadConfig', () => {
     expect(config.port).toBe(3001);
     expect(config.db.kind).toBe('sqlite');
     expect(config.sessionTtlMs).toBe(12 * 60 * 60 * 1000);
-    expect(config.trustedProxyHeader).toBe('cf-connecting-ip');
+    // Every reverse proxy sets this one; naming a particular vendor's header
+    // here would make every caller look like the ingress controller anywhere
+    // that vendor is not in front.
+    expect(config.trustedProxyHeader).toBe('x-forwarded-for');
     expect(config.cookieSecure).toBe(true);
   });
 

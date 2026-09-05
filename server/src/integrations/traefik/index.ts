@@ -66,13 +66,20 @@ export function traefikIntegration(api: KubeApi): IntegrationModule {
         };
       }
 
+      // Neither of these depends on where Traefik was installed or what the
+      // release was called. A chart may be named anything and go anywhere; the
+      // CRD and the IngressClass it registers are the same everywhere.
       if (await probes.hasCrd('ingressroutes.traefik.io')) {
         return { state: 'present', evidence: 'CustomResourceDefinition ingressroutes.traefik.io' };
       }
 
+      if (await probes.ingressClass('traefik')) {
+        return { state: 'present', evidence: 'IngressClass traefik' };
+      }
+
       return {
         state: 'absent',
-        evidence: `No Traefik deployment in ${NAMESPACE_CANDIDATES.join(', ')}`,
+        evidence: `No Traefik deployment in ${NAMESPACE_CANDIDATES.join(', ')}, and no traefik IngressClass or IngressRoute CRD`,
       };
     },
 

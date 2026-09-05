@@ -29,6 +29,9 @@ resources:
   # a revision, never a branch. A branch means the cluster changes when somebody
   # else pushes, which is not a deployment, it is a surprise.
   - ../../deploy
+  # Hardening, once you know which namespace your ingress controller runs in:
+  # uncomment both this and the patch at the bottom of this file.
+  # - ../../deploy/networkpolicy.yaml
 
 images:
   - name: ghcr.io/ridanit-ruma/kubitor-server
@@ -42,7 +45,7 @@ patches:
   # The address the dashboard answers on, and the ingress that publishes it.
   - target: { kind: Ingress, name: kubitor }
     patch: |-
-      - op: replace
+      - op: add
         path: /spec/ingressClassName
         value: traefik
       - op: replace
@@ -57,3 +60,19 @@ patches:
       - op: add
         path: /spec/storageClassName
         value: standard
+
+  # Behind a proxy that sets something better than `x-forwarded-for` — which a
+  # client can append to — name it here. Login throttling and the audit trail
+  # key on whatever this says.
+  # - target: { kind: Deployment, name: kubitor-server }
+  #   patch: |-
+  #     - op: add
+  #       path: /spec/template/spec/containers/0/env/-
+  #       value: { name: KUBITOR_TRUSTED_PROXY_HEADER, value: cf-connecting-ip }
+
+  # The namespace your ingress controller runs in, for the network policy above.
+  # - target: { kind: NetworkPolicy }
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
+  #       value: ingress-nginx

@@ -12,7 +12,10 @@ resources:
   - client.yaml
   - agent.yaml
   - ingress.yaml
-  - networkpolicy.yaml
+  # networkpolicy.yaml is deliberately absent: it has to name the namespace your
+  # ingress controller runs in, and a wrong guess makes the dashboard
+  # unreachable with nothing in any log to explain it. `examples/overlay` shows
+  # how to add it once you know the name.
 
 # `commonLabels` would push this into the Deployment selector, which is
 # immutable; `includeSelectors: false` keeps it a label only.

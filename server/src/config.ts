@@ -16,7 +16,16 @@ const schema = z
     KUBITOR_SESSION_SECRET: z.string().min(MIN_SECRET_LENGTH),
     KUBITOR_SESSION_TTL_HOURS: z.coerce.number().positive().default(12),
     KUBITOR_ADMIN_INITIAL_PASSWORD: z.string().min(1).optional(),
-    KUBITOR_TRUSTED_PROXY_HEADER: z.string().min(1).default('cf-connecting-ip'),
+    /**
+     * The header carrying the real caller, which throttling and the audit trail
+     * key on. Every reverse proxy sets `x-forwarded-for`; a particular one may
+     * offer something better — Cloudflare's `cf-connecting-ip` cannot be
+     * appended to by a client, where `x-forwarded-for` can — and a deployment
+     * behind such a proxy should name it. Defaulting to one vendor's header
+     * means every caller looks like the ingress controller everywhere else,
+     * which collapses the login throttle onto a single key.
+     */
+    KUBITOR_TRUSTED_PROXY_HEADER: z.string().min(1).default('x-forwarded-for'),
     KUBITOR_COOKIE_SECURE: z
       .enum(['true', 'false'])
       .default('true')

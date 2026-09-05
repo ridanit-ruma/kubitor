@@ -58,10 +58,6 @@ spec:
               value: sqlite
             - name: KUBITOR_SQLITE_PATH
               value: /var/lib/kubitor/kubitor.db
-            # Cloudflare terminates the tunnel, so this is the header that
-            # carries the real caller. Throttling and the audit trail key on it.
-            - name: KUBITOR_TRUSTED_PROXY_HEADER
-              value: cf-connecting-ip
           envFrom:
             - secretRef:
                 name: kubitor-server

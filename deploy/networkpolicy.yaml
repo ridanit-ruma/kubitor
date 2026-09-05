@@ -1,5 +1,25 @@
-# Only the ingress controller and the dashboard may reach the API. Without this
-# any pod in the cluster could hit /api/ingest and try tokens against it.
+# Hardening, and deliberately not applied by default — see `deploy/kustomization.yaml`.
+#
+# Only the ingress controller and kubitor's own pods may reach the server.
+# Without it, any pod in the cluster can hit /api/ingest and try tokens against
+# it. That is defence in depth rather than the control itself: ingest already
+# requires a projected service-account token whose audience, namespace, service
+# account and node claim are all checked.
+#
+# It names the namespace your ingress controller runs in, and no default is
+# right for everybody — `traefik` here is a placeholder. Adding this file with
+# the wrong namespace in it makes the dashboard unreachable with nothing in any
+# log to explain why, which is why it is opt-in. Set the namespace and add it:
+#
+#   resources:
+#     - ../../deploy
+#     - ../../deploy/networkpolicy.yaml
+#   patches:
+#     - target: { kind: NetworkPolicy }
+#       patch: |-
+#         - op: replace
+#           path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
+#           value: ingress-nginx
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
