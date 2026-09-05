@@ -13,8 +13,12 @@ Everything you can see, you can export as JSON or CSV with your filters applied.
 
 ## Deploying
 
-`deploy/` holds Kubernetes manifests (kustomize). Point Flux, Argo or
-`kubectl apply -k` at it, and supply a secret named `kubitor-server` with
+`deploy/` holds Kubernetes manifests (kustomize), and ships with no cluster's
+values in it: the ingress host is `kubitor.example.com` and the database volume
+takes whatever storage class your cluster defaults to. Copy
+`examples/overlay` and set both there rather than editing `deploy/`, so an
+upgrade stays a one-line change. Point Flux, Argo or
+`kubectl apply -k` at your copy, and supply a secret named `kubitor-server` with
 `KUBITOR_SESSION_SECRET` (32 characters or more) and, on first install,
 `KUBITOR_ADMIN_INITIAL_PASSWORD`.
 

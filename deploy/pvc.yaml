@@ -1,5 +1,10 @@
 # A new volume rather than the one the pre-rewrite build used: the schema is
 # entirely different and the old file would fail to migrate.
+#
+# No storage class: the cluster's default is the only choice that works
+# everywhere, and naming one here would name somebody else's. Pin one in an
+# overlay if the default is not the class you want this on — but pin it before
+# the first apply, because a bound volume's class cannot be changed afterwards.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -7,7 +12,6 @@ metadata:
   namespace: kubitor
 spec:
   accessModes: [ReadWriteOnce]
-  storageClassName: ceph-block
   resources:
     requests:
       storage: 10Gi

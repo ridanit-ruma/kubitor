@@ -12,8 +12,8 @@ const ingress: IngressInfo = {
   className: 'traefik',
   tls: true,
   rules: [
-    { host: 'kubitor.myuyayam.dev', path: '/', service: 'kubitor-client', port: 3000 },
-    { host: 'kubitor.myuyayam.dev', path: '/api', service: 'kubitor-server', port: 3001 },
+    { host: 'kubitor.example.com', path: '/', service: 'kubitor-client', port: 3000 },
+    { host: 'kubitor.example.com', path: '/api', service: 'kubitor-server', port: 3001 },
   ],
 };
 
@@ -23,7 +23,7 @@ const ingressRoute = {
     tls: {},
     routes: [
       {
-        match: 'Host(`demo.myuyayam.dev`) && PathPrefix(`/app`)',
+        match: 'Host(`demo.example.com`) && PathPrefix(`/app`)',
         services: [{ name: 'demo-web', port: 8080 }],
       },
     ],
@@ -143,7 +143,7 @@ describe('traefik routes collector', () => {
     expect(fromIngress).toHaveLength(2);
     expect(fromIngress[0]).toMatchObject({
       namespace: 'kubitor',
-      host: 'kubitor.myuyayam.dev',
+      host: 'kubitor.example.com',
       path: '/',
       service: 'kubitor-client',
       port: 3000,
@@ -157,7 +157,7 @@ describe('traefik routes collector', () => {
 
     expect(row).toMatchObject({
       namespace: 'demo',
-      host: 'demo.myuyayam.dev',
+      host: 'demo.example.com',
       path: '/app',
       service: 'demo-web',
       port: 8080,
@@ -184,7 +184,7 @@ describe('traefik routes collector', () => {
 
 describe('traefik access collector', () => {
   const line = JSON.stringify({
-    RequestHost: 'kubitor.myuyayam.dev',
+    RequestHost: 'kubitor.example.com',
     RequestMethod: 'GET',
     RequestPath: '/',
     DownstreamStatus: 200,
@@ -195,7 +195,7 @@ describe('traefik access collector', () => {
 
   const other = (path: string): string =>
     JSON.stringify({
-      RequestHost: 'kubitor.myuyayam.dev',
+      RequestHost: 'kubitor.example.com',
       RequestMethod: 'GET',
       RequestPath: path,
       DownstreamStatus: 200,

@@ -5,7 +5,7 @@ const KEY = {
   kind: 'IngressRoute',
   namespace: 'kubitor',
   name: 'kubitor',
-  host: 'kubitor.myuyayam.dev',
+  host: 'kubitor.example.com',
   path: '/api',
 };
 

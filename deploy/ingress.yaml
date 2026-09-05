@@ -1,6 +1,11 @@
 # One host, split at the edge: the dashboard is served from / and the API from
 # /api, so the browser sends its session cookie same-origin with no CORS
 # arrangement and the WebSocket upgrade rides the same path.
+#
+# Two values here belong to your cluster and not to kubitor: the host below and
+# the ingress class above it. Patch them in an overlay rather than editing this
+# file, so an upgrade never has to be merged by hand — `examples/overlay` shows
+# the whole of it.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,7 +14,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: kubitor.myuyayam.dev
+    - host: kubitor.example.com
       http:
         paths:
           - path: /api

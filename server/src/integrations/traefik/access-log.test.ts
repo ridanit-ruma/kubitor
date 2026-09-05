@@ -9,14 +9,14 @@ const REAL_LINE = JSON.stringify({
   DownstreamStatus: 200,
   Duration: 6_479_116,
   KubernetesIngressName: 'kubitor',
-  RequestAddr: 'kubitor.myuyayam.dev',
-  RequestHost: 'kubitor.myuyayam.dev',
+  RequestAddr: 'kubitor.example.com',
+  RequestHost: 'kubitor.example.com',
   RequestMethod: 'GET',
   RequestPath: '/_next/static/chunks/app/login/page.js',
   RequestProtocol: 'HTTP/1.1',
   RequestScheme: 'http',
   RetryAttempts: 0,
-  RouterName: 'kubitor-kubitor-kubitor-myuyayam-dev@kubernetes',
+  RouterName: 'kubitor-kubitor-kubitor-example-com@kubernetes',
   ServiceName: 'kubitor-kubitor-client-3000@kubernetes',
   StartUTC: '2026-09-03T04:18:47.74852693Z',
   entryPointName: 'web',
@@ -30,12 +30,12 @@ describe('parseAccessLine', () => {
   it('reads a real Traefik access line', () => {
     const row = parseAccessLine(REAL_LINE);
 
-    expect(row?.host).toBe('kubitor.myuyayam.dev');
+    expect(row?.host).toBe('kubitor.example.com');
     expect(row?.method).toBe('GET');
     expect(row?.path).toBe('/_next/static/chunks/app/login/page.js');
     expect(row?.status).toBe(200);
     expect(row?.bytes_out).toBe(4521);
-    expect(row?.route).toBe('kubitor-kubitor-kubitor-myuyayam-dev@kubernetes');
+    expect(row?.route).toBe('kubitor-kubitor-kubitor-example-com@kubernetes');
   });
 
   it('converts the nanosecond duration to milliseconds', () => {

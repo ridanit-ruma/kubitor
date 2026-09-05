@@ -1,0 +1,59 @@
+# What one cluster adds to kubitor, and the only thing that should differ
+# between two installations of it.
+#
+# It sits outside `deploy/` on purpose: kustomize refuses an overlay nested
+# inside the base it builds on.
+#
+# Point Flux, Argo or `kubectl apply -k` at a copy of this directory rather than
+# at `deploy/` itself. Everything cluster-specific lives here — the host name,
+# the storage class, the image versions you have decided to run — so upgrading
+# kubitor is a change to `ref` below and nothing else. `deploy/` stays exactly
+# as it ships, and there is never a merge to resolve.
+#
+# Keeping this copy in a private repository is a reasonable thing to do: it
+# names your host and your storage, which is worth rather less to the world than
+# it is to whoever is looking for something to attack. kubitor itself is public
+# and should stay that way — the point of the project is that anyone can run it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kubitor
+
+resources:
+  # The manifests as they ship. This reads them from the copy beside it, which
+  # is what a private clone of this repository wants: kubitor's own files stay
+  # byte-identical to upstream, so pulling a new version is a fast-forward with
+  # nothing to merge.
+  #
+  # A deployment that does not keep a copy can name the upstream directly —
+  # `https://github.com/ridanit-ruma/kubitor//deploy?ref=<tag or sha>` — but pin
+  # a revision, never a branch. A branch means the cluster changes when somebody
+  # else pushes, which is not a deployment, it is a surprise.
+  - ../../deploy
+
+images:
+  - name: ghcr.io/ridanit-ruma/kubitor-server
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: ghcr.io/ridanit-ruma/kubitor-client
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: ghcr.io/ridanit-ruma/kubitor-agent
+    newTag: sha-0000000000000000000000000000000000000000
+
+patches:
+  # The address the dashboard answers on, and the ingress that publishes it.
+  - target: { kind: Ingress, name: kubitor }
+    patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: traefik
+      - op: replace
+        path: /spec/rules/0/host
+        value: kubitor.example.com
+
+  # The class the database volume is cut from. Set this before the first apply:
+  # a bound volume's storage class cannot be changed afterwards, and an attempt
+  # to change it fails the whole apply rather than just this object.
+  - target: { kind: PersistentVolumeClaim, name: kubitor-data-v2 }
+    patch: |-
+      - op: add
+        path: /spec/storageClassName
+        value: standard
