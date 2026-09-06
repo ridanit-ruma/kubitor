@@ -13,6 +13,16 @@ export interface FacetDescriptor {
   table: string;
   /** Epoch-ms column: `at` for event facets, `observed_at` for state facets. */
   timeColumn: string;
+  /**
+   * Columns that break a tie on `timeColumn`, so a page boundary holds still.
+   *
+   * A state facet writes every row of a sync with one instant, and an event
+   * facet reading a log tail writes a burst of them with the same millisecond.
+   * `ORDER BY <time> DESC LIMIT 100 OFFSET 100` over such a run is free to
+   * order the tie differently on each query, which shows a row on two pages and
+   * hides another on none. These make the order total.
+   */
+  orderTiebreak: readonly string[];
   /** Columns encoded with the dialect's JSON codec on write. */
   jsonColumns: readonly string[];
   /** How long event rows survive; unused for state facets. */
@@ -171,6 +181,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'event',
     table: 'facet_host_hardware',
     timeColumn: 'at',
+    orderTiebreak: ['node'],
     jsonColumns: ['temps', 'attrs'],
     retentionMs: 7 * DAY_MS,
     schema: hostHardware,
@@ -180,6 +191,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'state',
     table: 'facet_host_resources',
     timeColumn: 'observed_at',
+    orderTiebreak: ['node'],
     jsonColumns: [
       'gpus',
       'disks',
@@ -197,6 +209,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'state',
     table: 'facet_nodes',
     timeColumn: 'observed_at',
+    orderTiebreak: ['name'],
     jsonColumns: ['attrs'],
     schema: nodes,
   },
@@ -205,6 +218,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'state',
     table: 'facet_workloads',
     timeColumn: 'observed_at',
+    orderTiebreak: ['namespace', 'name'],
     jsonColumns: ['attrs'],
     schema: workloads,
   },
@@ -213,6 +227,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'event',
     table: 'facet_events',
     timeColumn: 'at',
+    orderTiebreak: ['namespace', 'kind', 'name', 'reason'],
     jsonColumns: ['attrs'],
     retentionMs: 7 * DAY_MS,
     schema: events,
@@ -222,6 +237,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'event',
     table: 'facet_http_access',
     timeColumn: 'at',
+    orderTiebreak: ['host', 'path', 'client_ip'],
     jsonColumns: ['attrs'],
     retentionMs: 14 * DAY_MS,
     schema: httpAccess,
@@ -231,6 +247,7 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     kind: 'state',
     table: 'facet_http_routes',
     timeColumn: 'observed_at',
+    orderTiebreak: ['namespace', 'name', 'host', 'path'],
     jsonColumns: ['attrs'],
     schema: httpRoutes,
   },

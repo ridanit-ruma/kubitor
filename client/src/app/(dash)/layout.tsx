@@ -57,10 +57,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <CommandPalette manifest={manifest} />
               <div className="ml-auto flex items-center gap-3">
                 {manifest && (
-                  // The cluster's version, labelled as the cluster's. It used
-                  // to sit beside the product name, where it read as kubitor's.
+                  // Node count only. The control plane's version was here too,
+                  // and it is not the cluster's: nodes upgrade one at a time, so
+                  // a single version in a corner is wrong for every node still
+                  // behind it. The version that matters is the node's own, and
+                  // it is on the Nodes table beside the node it belongs to.
                   <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                    Kubernetes {manifest.cluster.version} · {manifest.cluster.nodes} nodes
+                    {manifest.cluster.nodes} nodes
                   </span>
                 )}
                 <Button variant="ghost" size="sm" onClick={() => void signOut()}>

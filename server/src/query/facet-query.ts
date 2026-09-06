@@ -138,9 +138,20 @@ export class FacetQuery {
     ).executeTakeFirstOrThrow()) as any;
 
     const limit = Math.min(Math.max(filters.limit ?? 100, 1), MAX_PAGE);
-    const rows = await applyFilters(this.#db.selectFrom(table).selectAll())
+
+    // Newest first, then the facet's own identity. The second half is what
+    // makes `OFFSET` mean anything: without it a run of rows sharing one
+    // instant may come back in a different order on the very next query, and
+    // paging through them shows some rows twice and others never.
+    let listing = applyFilters(this.#db.selectFrom(table).selectAll())
       // biome-ignore lint/suspicious/noExplicitAny: table is chosen by descriptor
-      .orderBy(descriptor.timeColumn as any, 'desc')
+      .orderBy(descriptor.timeColumn as any, 'desc');
+    for (const column of descriptor.orderTiebreak) {
+      // biome-ignore lint/suspicious/noExplicitAny: table is chosen by descriptor
+      listing = listing.orderBy(column as any, 'asc');
+    }
+
+    const rows = await listing
       .limit(limit)
       .offset(Math.max(filters.offset ?? 0, 0))
       .execute();

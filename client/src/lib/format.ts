@@ -22,10 +22,19 @@ export function formatBytesPerSecond(rate: number | null | undefined): string {
   return `${formatBytes(rate)}/s`;
 }
 
-/** Millicores, shown as cores once there is a whole one. */
+/**
+ * Millicores, shown as cores once there is a whole one.
+ *
+ * Trailing zeros are dropped: a machine with twelve cores has twelve, and
+ * writing `12.00` invites the reader to look for the hundredths that made it
+ * worth two decimal places. Fractions keep exactly the digits they need.
+ */
 export function formatCpu(milli: number | null | undefined): string {
   if (milli === null || milli === undefined || !Number.isFinite(milli)) return '—';
-  return milli < 1000 ? `${Math.round(milli)}m` : `${(milli / 1000).toFixed(2)} cores`;
+  if (milli < 1000) return `${Math.round(milli)}m`;
+
+  const cores = (milli / 1000).toFixed(2).replace(/\.?0+$/, '');
+  return `${cores} ${cores === '1' ? 'core' : 'cores'}`;
 }
 
 export function formatPercent(value: number | null | undefined, digits = 1): string {

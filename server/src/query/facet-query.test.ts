@@ -41,6 +41,35 @@ describeEachDialect('FacetQuery filtering', (ctx) => {
     query = new FacetQuery(ctx.db, ctx.sqlHelper);
   });
 
+  /**
+   * Every row above shares one instant, which is the normal case: a log tail
+   * arrives as a burst and a state sync stamps its whole snapshot with the
+   * time it ran. Ordering on that column alone leaves the engine free to break
+   * the tie differently per query, so paging shows a row twice and drops
+   * another — the facet's own identity is what makes the order total.
+   */
+  it('pages through rows sharing one instant without repeating or losing any', async () => {
+    const seen: unknown[] = [];
+    for (let offset = 0; offset < 4; offset += 2) {
+      const page = await query.run('http.access', { limit: 2, offset });
+      seen.push(...page.rows.map((row) => row.path));
+    }
+
+    expect([...seen].sort()).toEqual([
+      '/api/metrics/current',
+      '/checkout',
+      '/nodes/calder',
+      '/posts/1',
+    ]);
+  });
+
+  it('returns the same page twice for the same query', async () => {
+    const first = await query.run('http.access', { limit: 2, offset: 2 });
+    const again = await query.run('http.access', { limit: 2, offset: 2 });
+
+    expect(again.rows.map((row) => row.path)).toEqual(first.rows.map((row) => row.path));
+  });
+
   it('finds rows matching a search term', async () => {
     const page = await query.run('http.access', { search: 'checkout' });
     expect(page.total).toBe(1);

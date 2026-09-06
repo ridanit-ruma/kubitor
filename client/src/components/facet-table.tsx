@@ -3,6 +3,7 @@
 import { Download, EyeOff, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { Pager } from '@/components/pager';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -37,7 +38,16 @@ function withFixed(
 ): URLSearchParams {
   const params = new URLSearchParams(search);
   for (const [key, value] of Object.entries(fixed ?? {})) params.set(key, value);
+  // The reader's page is a position, not a filter. It leaves here as an offset
+  // and never reaches the server under its own name.
+  params.delete('page');
   return params;
+}
+
+/** The page in the URL, as a number the rest of the component can trust. */
+export function pageIn(params: URLSearchParams): number {
+  const raw = Number(params.get('page'));
+  return Number.isInteger(raw) && raw >= 1 ? raw : 1;
 }
 
 /**
@@ -158,6 +168,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
   // effect below depends on it rather than on the router object.
   const search = params.toString();
   const fixedKey = JSON.stringify(fixed ?? {});
+  const page = pageIn(params);
   const query = withFixed(search, fixed);
   query.set('limit', String(pageSize));
 
@@ -165,6 +176,9 @@ export function FacetTable<Row extends Record<string, unknown>>({
     const next = new URLSearchParams(params.toString());
     if (value === null || value === '' || value === '__all') next.delete(key);
     else next.set(key, value);
+    // Any other change re-cuts the result set, and page four of the old one
+    // names nothing in the new one.
+    if (key !== 'page') next.delete('page');
     router.replace(`?${next.toString()}`, { scroll: false });
   };
 
@@ -202,6 +216,21 @@ export function FacetTable<Row extends Record<string, unknown>>({
     router.replace(`?${current.toString()}`, { scroll: false });
   }, [defaultExclude, applied, router]);
 
+  /*
+   * A link can name a page the current filters do not reach — someone shares
+   * page 40, the log is swept, and the table comes back empty with no hint
+   * that there is anything to see. Land them on the last page there is.
+   */
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  useEffect(() => {
+    if (loading || total === 0 || page <= pages) return;
+
+    const next = new URLSearchParams(applied);
+    if (pages === 1) next.delete('page');
+    else next.set('page', String(pages));
+    router.replace(`?${next.toString()}`, { scroll: false });
+  }, [loading, total, page, pages, applied, router]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -211,10 +240,11 @@ export function FacetTable<Row extends Record<string, unknown>>({
       try {
         const request = withFixed(search, JSON.parse(fixedKey) as Record<string, string>);
         request.set('limit', String(pageSize));
-        const page = await api.facet(facet, request);
+        request.set('offset', String((page - 1) * pageSize));
+        const result = await api.facet(facet, request);
         if (cancelled) return;
-        setRows(page.rows as Row[]);
-        setTotal(page.total);
+        setRows(result.rows as Row[]);
+        setTotal(result.total);
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -225,7 +255,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
     return () => {
       cancelled = true;
     };
-  }, [facet, search, fixedKey, pageSize]);
+  }, [facet, search, fixedKey, pageSize, page]);
 
   return (
     <div className="screen gap-3">
@@ -274,7 +304,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
 
         <div className="ml-auto flex items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground">
-            {loading ? 'loading' : `${rows.length} of ${total.toLocaleString()}`}
+            {loading ? 'loading' : countLabel(page, pageSize, rows.length, total)}
           </span>
           <Button asChild variant="outline" size="sm">
             <a href={exportHref(facet, query, 'csv')} download>
@@ -368,6 +398,16 @@ export function FacetTable<Row extends Record<string, unknown>>({
         </Table>
       </div>
 
+      {/*
+       * Under the table and inside the same flow, so it moves with the rows it
+       * belongs to rather than needing a scrollbar of its own to reach.
+       */}
+      <Pager
+        page={page}
+        pages={pages}
+        onPage={(next) => setParam('page', next === 1 ? null : String(next))}
+      />
+
       <RowDetail
         row={opened}
         columns={columns}
@@ -431,4 +471,18 @@ function plain(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
   return String(value);
+}
+
+/**
+ * Which rows of how many this page is showing.
+ *
+ * `100 of 812` invites the reader to wonder where the other 712 went; naming
+ * the range answers that before it is asked, and says which way through the
+ * list the reader has got.
+ */
+export function countLabel(page: number, pageSize: number, shown: number, total: number): string {
+  if (total === 0 || shown === 0) return `0 of ${total.toLocaleString()}`;
+
+  const first = (page - 1) * pageSize + 1;
+  return `${first.toLocaleString()}\u2013${(first + shown - 1).toLocaleString()} of ${total.toLocaleString()}`;
 }

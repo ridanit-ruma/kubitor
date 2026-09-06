@@ -46,7 +46,13 @@ describe('formatCpu', () => {
   });
 
   it('switches to cores once there is one', () => {
-    expect(formatCpu(2500)).toBe('2.50 cores');
+    expect(formatCpu(2500)).toBe('2.5 cores');
+  });
+
+  it('drops the decimals a whole number of cores does not need', () => {
+    expect(formatCpu(12_000)).toBe('12 cores');
+    expect(formatCpu(1000)).toBe('1 core');
+    expect(formatCpu(1750)).toBe('1.75 cores');
   });
 
   it('reports unknown rather than zero', () => {
