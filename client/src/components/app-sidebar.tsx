@@ -131,17 +131,37 @@ export function AppSidebar({ manifest }: { manifest: CapabilityManifest | null }
  * Longest match wins, and a match must end at a path segment. Both matter:
  * `/settings/accounts` starts with `/settings`, so a plain prefix test lit up
  * two rows at once and left the reader unsure which screen they were on.
+ *
+ * An entry's `alsoMatches` is only consulted when nothing owns the path
+ * outright, so a claim on borrowed ground never outbids the entry that lives
+ * there.
  */
-function activeHref(entries: readonly NavEntry[], pathname: string): string | null {
+export function activeHref(entries: readonly NavEntry[], pathname: string): string | null {
+  return (
+    owner(entries, pathname, (entry) => entry.href) ??
+    owner(entries, pathname, (entry) => entry.alsoMatches)
+  );
+}
+
+function owner(
+  entries: readonly NavEntry[],
+  pathname: string,
+  under: (entry: NavEntry) => string | undefined,
+): string | null {
   let best: string | null = null;
+  let longest = -1;
 
   for (const entry of entries) {
-    const matches =
-      entry.href === '/'
-        ? pathname === '/'
-        : pathname === entry.href || pathname.startsWith(`${entry.href}/`);
+    const prefix = under(entry);
+    if (prefix === undefined) continue;
 
-    if (matches && (best === null || entry.href.length > best.length)) best = entry.href;
+    const matches =
+      prefix === '/' ? pathname === '/' : pathname === prefix || pathname.startsWith(`${prefix}/`);
+
+    if (matches && prefix.length > longest) {
+      best = entry.href;
+      longest = prefix.length;
+    }
   }
 
   return best;

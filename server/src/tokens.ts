@@ -16,5 +16,13 @@ export const NODE_SAMPLES = Symbol('kubitor.nodeSamples');
 export const LIVE_CACHE = Symbol('kubitor.liveCache');
 export const INGEST_PIPELINE = Symbol('kubitor.ingestPipeline');
 export const AGENT_TOKENS = Symbol('kubitor.agentTokens');
+export const AGENTS_SERVICE = Symbol('kubitor.agentsService');
+/** Cluster node names, so an agent credential can be marked as also a node's. */
+export const KUBE_NODE_NAMES = Symbol('kubitor.kubeNodeNames');
 export const HOST_INGEST = Symbol('kubitor.hostIngest');
 export const SA_VERIFIER = Symbol('kubitor.serviceAccountVerifier');
+/** Absent unless a bucket is configured, which is what turns backups on. */
+export const BACKUP_RUNNER = Symbol('kubitor.backupRunner');
+export const ALERTS_SERVICE = Symbol('kubitor.alertsService');
+export const NOTIFICATIONS_REPO = Symbol('kubitor.notificationsRepo');
+export const DISPATCHER = Symbol('kubitor.dispatcher');

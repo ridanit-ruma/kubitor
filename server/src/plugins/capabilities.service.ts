@@ -7,7 +7,17 @@ import type { IntegrationRegistry } from './registry.js';
 /** Screens the core always provides, whatever the cluster runs. */
 export const CORE_NAV: readonly NavEntry[] = [
   { id: 'overview', title: 'Overview', category: 'overview', href: '/', order: 0 },
-  { id: 'nodes', title: 'Nodes', category: 'infrastructure', href: '/nodes', order: 0 },
+  {
+    id: 'nodes',
+    title: 'Nodes',
+    category: 'infrastructure',
+    href: '/nodes',
+    // A node's own page is a machine page, and machine pages live under
+    // `/hosts`. Where there is no Hosts screen, this entry is where the reader
+    // came from and where Back goes.
+    alsoMatches: '/hosts',
+    order: 0,
+  },
   { id: 'workloads', title: 'Workloads', category: 'infrastructure', href: '/workloads', order: 1 },
   {
     id: 'namespaces',
@@ -33,6 +43,9 @@ export const CORE_NAV: readonly NavEntry[] = [
     requiresFacet: 'http.routes',
     order: 1,
   },
+  // The first thing in the `security` category, which the manifest has always
+  // had a slot for and nothing to put in it.
+  { id: 'alerts', title: 'Alerts', category: 'security', href: '/alerts', order: 0 },
   { id: 'integrations', title: 'Integrations', category: 'settings', href: '/settings', order: 0 },
   {
     id: 'accounts',
@@ -41,7 +54,37 @@ export const CORE_NAV: readonly NavEntry[] = [
     href: '/settings/accounts',
     order: 1,
   },
+  {
+    id: 'agents',
+    title: 'Agents',
+    category: 'settings',
+    href: '/settings/agents',
+    order: 2,
+  },
+  {
+    id: 'backups',
+    title: 'Backups',
+    category: 'settings',
+    href: '/settings/backups',
+    order: 3,
+  },
 ];
+
+/**
+ * The Hosts screen, mounted only where a machine is not a cluster node.
+ *
+ * With agents on nodes alone it would list exactly what Nodes lists, and a
+ * second screen answering the same question is what the capability manifest
+ * exists to prevent. One machine outside the cluster makes it a different
+ * question, and only then does the entry appear.
+ */
+export const HOSTS_NAV: NavEntry = {
+  id: 'hosts',
+  title: 'Hosts',
+  category: 'hosts',
+  href: '/hosts',
+  order: 0,
+};
 
 export interface ClusterFacts {
   version: string;
@@ -79,7 +122,7 @@ export class CapabilitiesService {
       agent,
       cluster,
       kubitor: { version: this.#deps.version },
-      coreNav: CORE_NAV,
+      coreNav: agent.standalone > 0 ? [...CORE_NAV, HOSTS_NAV] : CORE_NAV,
       generatedAt: now,
     });
   }

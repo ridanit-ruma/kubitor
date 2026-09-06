@@ -148,7 +148,7 @@ async function search(term: string): Promise<Hit[]> {
         id: `node-${String(row.name)}`,
         label: String(row.name),
         detail: 'node',
-        href: `/nodes/${encodeURIComponent(String(row.name))}`,
+        href: `/hosts/${encodeURIComponent(String(row.name))}`,
       });
     }
   }

@@ -28,6 +28,10 @@ beforeAll(async () => {
   const liveCache = {} as never;
   const pipeline = {} as never;
   const agentTokens = {} as never;
+  const agents = {} as never;
+  const alerts = {} as never;
+  const notifications = {} as never;
+  const dispatcher = {} as never;
   const hostIngest = {} as never;
 
   const moduleRef = await Test.createTestingModule({
@@ -43,6 +47,12 @@ beforeAll(async () => {
         liveCache,
         pipeline,
         agentTokens,
+        agents,
+        nodeNames: async () => [],
+        backup: null,
+        alerts,
+        notifications,
+        dispatcher,
         hostIngest,
         saVerifier: null,
       }),

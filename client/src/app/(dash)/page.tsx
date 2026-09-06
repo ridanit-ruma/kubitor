@@ -96,7 +96,12 @@ export default function OverviewPage() {
     };
   }, []);
 
-  const nodes = [...live.nodes].sort((a, b) => a.node.localeCompare(b.node));
+  // The overview is about the cluster. A machine outside it reports through the
+  // same socket and belongs on the Hosts screen, not in this page's averages or
+  // its node table.
+  const nodes = live.nodes
+    .filter((node) => node.clusterNode)
+    .sort((a, b) => a.node.localeCompare(b.node));
 
   return (
     <div className="screen gap-2.5">
@@ -457,7 +462,7 @@ function NodeTable({ nodes, now }: { nodes: readonly LiveNodeMetrics[]; now: num
             <TableRow key={node.node}>
               <TableCell className="max-w-0 truncate">
                 <Link
-                  href={`/nodes/${encodeURIComponent(node.node)}`}
+                  href={`/hosts/${encodeURIComponent(node.node)}`}
                   className="font-medium underline-offset-4 hover:underline"
                 >
                   {node.node}

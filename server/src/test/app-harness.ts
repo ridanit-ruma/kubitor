@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Kysely } from 'kysely';
+import { AlertsService } from '../alerts/service.js';
 import { createAppModule } from '../app.module.js';
 import { AccountsService } from '../auth/accounts.service.js';
+import { AgentsService } from '../auth/agents.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import { hashPassword } from '../auth/password.js';
 import { HostIngest } from '../collect/host-ingest.js';
@@ -14,15 +16,18 @@ import type { Config } from '../config.js';
 import { AccountEventsRepo } from '../db/account-events.repo.js';
 import { AccountsRepo } from '../db/accounts.repo.js';
 import { AgentTokensRepo } from '../db/agent-tokens.repo.js';
+import { AlertsRepo } from '../db/alerts.repo.js';
 import { createDb } from '../db/connect.js';
 import { SQLITE_SQL } from '../db/dialect.js';
 import { IntegrationStateRepo } from '../db/integration-state.repo.js';
 import { LoginAttemptsRepo } from '../db/login-attempts.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
 import { NodeSamplesRepo } from '../db/node-samples.repo.js';
+import { NotificationsRepo } from '../db/notifications.repo.js';
 import type { Database } from '../db/schema.js';
 import { SessionsRepo } from '../db/sessions.repo.js';
 import { HealthService } from '../health.service.js';
+import { Dispatcher } from '../notify/dispatcher.js';
 import { CapabilitiesService } from '../plugins/capabilities.service.js';
 import type { IntegrationModule } from '../plugins/contract.js';
 import { DetectionService } from '../plugins/detection.service.js';
@@ -61,6 +66,8 @@ export interface TestAppOptions {
   config?: Partial<Config>;
   integrations?: readonly IntegrationModule[];
   cluster?: FakeClusterState;
+  /** Cluster node names, for the routes that mark a credential as a node's. */
+  nodeNames?: readonly string[];
 }
 
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
@@ -76,6 +83,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     sessionTtlMs: 3_600_000,
     trustedProxyHeader: 'cf-connecting-ip',
     cookieSecure: true,
+    notify: { minimumSeverity: 'warning' },
     ...overrides,
   };
 
@@ -104,6 +112,22 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const liveCache = new LiveCache();
   const pipeline = new IngestPipeline(db, SQLITE_SQL);
   const agentTokens = new AgentTokensRepo(db);
+  const agents = new AgentsService(agentTokens);
+  const notifications = new NotificationsRepo(db);
+  const dispatcher = new Dispatcher({
+    channels: [],
+    notifications,
+    alerts: new AlertsRepo(db, SQLITE_SQL),
+    deps: { fetch: globalThis.fetch, baseUrl: null },
+    now: () => Date.now(),
+  });
+  const alerts = new AlertsService({
+    db,
+    alerts: new AlertsRepo(db, SQLITE_SQL),
+    backups: null,
+    staleAgents: async () => [],
+    now: () => Date.now(),
+  });
   const hostIngest = new HostIngest({ cache: liveCache, pipeline });
   const capabilities = new CapabilitiesService({
     version: 'test',
@@ -111,7 +135,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     states,
     detection,
     clusterFacts: async () => ({ version: 'v1.36.3', nodes: 4 }),
-    agentStatus: async () => ({ installed: false, reporting: 0, expected: 4, stale: [] }),
+    agentStatus: async () => ({
+      installed: false,
+      reporting: 0,
+      expected: 4,
+      standalone: 0,
+      stale: [],
+    }),
   });
 
   const moduleRef = await Test.createTestingModule({
@@ -127,6 +157,12 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         liveCache,
         pipeline,
         agentTokens,
+        agents,
+        nodeNames: async () => [...(options.nodeNames ?? [])],
+        backup: null,
+        alerts,
+        notifications,
+        dispatcher,
         hostIngest,
         // No cluster here, so no projected token can be verified: the harness
         // exercises the static-token path, as an out-of-cluster agent would.

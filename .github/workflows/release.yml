@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  agent-tarball:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --filter @kubitor/agent...
+      - run: pnpm --filter @kubitor/agent build
+
+      # The same pruned tree the container image ships, so a host and a pod run
+      # identical code. It needs Node on the host; a single-file build would
+      # remove that and is a build-system project of its own.
+      - run: pnpm deploy --filter @kubitor/agent --prod --legacy out
+
+      - name: Pack
+        run: |
+          cp deploy/agent.service out/
+          tar -czf "kubitor-agent-${GITHUB_REF_NAME}-linux-x64.tar.gz" -C out .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: kubitor-agent-*.tar.gz
+          generate_release_notes: true

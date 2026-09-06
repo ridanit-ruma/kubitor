@@ -290,10 +290,14 @@ export function useClusterHistory(live: LiveState, windowMs = 15 * 60_000): Clus
     setSamples((previous) => {
       if (previous.at(-1)?.at === sampledAt) return previous;
 
+      // The cluster's throughput is its nodes'. A machine outside the cluster
+      // reports through the same socket and would otherwise be added to a total
+      // that claims to be the cluster's.
+      const members = nodes.filter((node) => node.clusterNode);
       const reading: ClusterSample = {
         at: sampledAt,
-        rxBytesPerSecond: total(nodes.map((node) => rateOf(node, 'rx'))),
-        txBytesPerSecond: total(nodes.map((node) => rateOf(node, 'tx'))),
+        rxBytesPerSecond: total(members.map((node) => rateOf(node, 'rx'))),
+        txBytesPerSecond: total(members.map((node) => rateOf(node, 'tx'))),
       };
 
       const cutoff = sampledAt - windowMs;

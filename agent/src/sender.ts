@@ -21,6 +21,36 @@ export function decideRetry(status: number | null): SendResult {
 }
 
 /**
+ * What to say about a delivery that did not land, or null when it did.
+ *
+ * The buffer rules above are about the buffer; this is about the logs, and the
+ * two were conflated. Advancing past a 4xx is deliberate, but advancing
+ * *silently* means a wrong credential looks exactly like a working agent — the
+ * startup line, then nothing, forever, while every reading is discarded.
+ *
+ * A server that cannot be reached at all was silent for the same reason, and
+ * that is the case worth saying most: it is the one an agent is in when the
+ * thing it reports to has died, and the only process that can know it.
+ */
+export function deliveryNote(result: SendResult, pending: number, endpoint: string): string | null {
+  const { status, advance } = result;
+
+  if (status === null) {
+    return `cannot reach ${endpoint}; holding ${pending} readings`;
+  }
+
+  if (status < 400) return null;
+
+  if (status === 401 || status === 403) {
+    return `server answered ${status}: this agent's credential was refused, and those readings were dropped. Check KUBITOR_AGENT_TOKEN, or issue a new token under Settings -> Agents.`;
+  }
+
+  return advance
+    ? `server answered ${status}; those readings were dropped`
+    : `server answered ${status}; holding ${pending} rows`;
+}
+
+/**
  * How the sender obtains its credential.
  *
  * A function rather than a string because a projected service-account token is

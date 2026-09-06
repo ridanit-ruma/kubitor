@@ -46,6 +46,15 @@ export interface NavEntry {
   title: string;
   category: NavCategory;
   href: string;
+  /**
+   * Paths this entry also owns, when no other entry claims them.
+   *
+   * The machine page lives at `/hosts/[name]` whether or not the machine is a
+   * node, but the Hosts entry only exists once a machine is outside the
+   * cluster. Without this, a node's page would leave the sidebar showing
+   * nothing at all.
+   */
+  alsoMatches?: string;
   requiresFacet?: FacetId;
   order?: number;
 }
@@ -60,9 +69,18 @@ export interface FacetAvailability {
 
 export interface AgentStatus {
   installed: boolean;
+  /** Cluster nodes whose agent is reporting. Never counts standalone hosts. */
   reporting: number;
+  /** Cluster nodes — what full coverage would be. */
   expected: number;
-  /** Nodes whose agent has stopped reporting. */
+  /**
+   * Reporting machines that are not cluster nodes.
+   *
+   * Their existence is what makes a Hosts screen worth having: with agents only
+   * on nodes it would answer the same question as Nodes.
+   */
+  standalone: number;
+  /** Machines expected to report that have gone quiet. */
   stale: string[];
 }
 

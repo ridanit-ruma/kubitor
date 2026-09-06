@@ -1,5 +1,5 @@
 import { sql } from 'kysely';
-import { beforeAll, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it } from 'vitest';
 import { describeEachDialect } from '../test/db-harness.js';
 import { migrateToLatest } from './migrate.js';
 import { sweepRetention } from './retention.js';
@@ -67,5 +67,69 @@ describeEachDialect('sweepRetention', (ctx) => {
     for (const spec of TABLES) {
       if (spec.kind === 'event') expect(deleted[spec.name]).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describeEachDialect('retention with a live column', (ctx) => {
+  const SPEC: TableSpec[] = [
+    {
+      name: 'alerts',
+      kind: 'event',
+      timeColumn: 'first_seen_at',
+      retentionMs: 90 * DAY_MS,
+      liveWhileNull: 'resolved_at',
+    },
+  ];
+
+  beforeEach(async () => {
+    await migrateToLatest(ctx.db, ctx.kind);
+    await ctx.db.deleteFrom('alerts').execute();
+  });
+
+  async function alert(id: string, firstSeenAt: number, resolvedAt: number | null) {
+    await ctx.db
+      .insertInto('alerts')
+      .values({
+        id,
+        rule: 'node-not-ready',
+        subject: id,
+        severity: 'critical',
+        summary: 's',
+        detail: null,
+        state: resolvedAt === null ? 'firing' : 'firing',
+        seen_count: 3,
+        missing_count: 0,
+        first_seen_at: firstSeenAt,
+        last_seen_at: firstSeenAt,
+        fired_at: firstSeenAt,
+        resolved_at: resolvedAt,
+        attrs: '{}',
+      })
+      .execute();
+  }
+
+  /**
+   * An alert that has been firing for longer than the window is the one most
+   * worth keeping. Sweeping it would make it fire again as though it were new.
+   */
+  it('never sweeps a row that is still live, however old', async () => {
+    const now = 1_800_000_000_000;
+    await alert('still-firing', now - 200 * DAY_MS, null);
+    await alert('long-resolved', now - 200 * DAY_MS, now - 199 * DAY_MS);
+
+    const deleted = await sweepRetention(ctx.db, SPEC, now);
+
+    expect(deleted.alerts).toBe(1);
+    const left = await ctx.db.selectFrom('alerts').select('id').execute();
+    expect(left.map((row) => row.id)).toEqual(['still-firing']);
+  });
+
+  it('keeps a resolved row that is still inside the window', async () => {
+    const now = 1_800_000_000_000;
+    await alert('recent', now - DAY_MS, now);
+
+    await sweepRetention(ctx.db, SPEC, now);
+
+    expect(await ctx.db.selectFrom('alerts').select('id').execute()).toHaveLength(1);
   });
 });

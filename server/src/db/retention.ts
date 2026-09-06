@@ -24,9 +24,19 @@ export async function sweepRetention(
     }
 
     const cutoff = now - spec.retentionMs;
-    const result = await sql`
-      DELETE FROM ${sql.table(spec.name)} WHERE ${sql.ref(spec.timeColumn)} < ${cutoff}
-    `.execute(db);
+
+    // `sql.ref` throughout: the column names come from the specs above, and
+    // routing them through an identifier rather than a string is what keeps
+    // this from being a place raw SQL could ever arrive.
+    const result = spec.liveWhileNull
+      ? await sql`
+          DELETE FROM ${sql.table(spec.name)}
+          WHERE ${sql.ref(spec.timeColumn)} < ${cutoff}
+            AND ${sql.ref(spec.liveWhileNull)} IS NOT NULL
+        `.execute(db)
+      : await sql`
+          DELETE FROM ${sql.table(spec.name)} WHERE ${sql.ref(spec.timeColumn)} < ${cutoff}
+        `.execute(db);
 
     deleted[spec.name] = Number(result.numAffectedRows ?? 0n);
   }

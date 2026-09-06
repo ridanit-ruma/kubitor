@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
+import { hostNameFrom } from './identity.js';
 import { createHostCollector } from './reading.js';
-import { Sender } from './sender.js';
+import { deliveryNote, Sender } from './sender.js';
 
 /**
  * The optional half of kubitor.
@@ -29,7 +30,7 @@ const SA_TOKEN_PATH = process.env.KUBITOR_SA_TOKEN_PATH ?? '/var/run/secrets/kub
 
 async function main(): Promise<void> {
   const server = required('KUBITOR_SERVER_URL').replace(/\/+$/, '');
-  const node = process.env.KUBITOR_NODE_NAME ?? hostname();
+  const node = hostNameFrom(process.env, hostname());
   const staticToken = process.env.KUBITOR_AGENT_TOKEN ?? null;
 
   const readToken = async (): Promise<string | null> => {
@@ -73,9 +74,10 @@ async function main(): Promise<void> {
       const result = await sender.flush();
       // Once a second is too often to log a failure every time; say it at most
       // once a minute so a long outage leaves a readable trail, not a flood.
-      if (!result.advance && result.status !== null && Date.now() - lastComplaint > 60_000) {
+      const note = deliveryNote(result, sender.pending, server);
+      if (note !== null && Date.now() - lastComplaint > 60_000) {
         lastComplaint = Date.now();
-        console.warn(`server answered ${result.status}; holding ${sender.pending} rows`);
+        console.warn(note);
       }
     } catch (error) {
       // A bad cycle must not end the process: the next one may work, and a

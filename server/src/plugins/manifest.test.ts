@@ -42,7 +42,7 @@ function build(
   return buildManifest({
     registry: new IntegrationRegistry(modules),
     states,
-    agent: { installed: false, reporting: 0, expected: 4, stale: [] },
+    agent: { installed: false, reporting: 0, expected: 4, standalone: 0, stale: [] },
     kubitor: { version: 'test' },
     cluster: { version: 'v1.36.3', nodes: 4 },
     coreNav,

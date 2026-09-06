@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NodeSample } from '../kube/summary.js';
-import { LiveCache } from './live-cache.js';
+import { LiveCache, type LiveHostMetrics } from './live-cache.js';
 
 const NOW = 1_756_800_000_000;
 
@@ -124,5 +124,54 @@ describe('LiveCache', () => {
     const [metrics] = cache.current(NOW);
     expect(metrics?.cpuMilli).toBeNull();
     expect(metrics?.memoryBytes).toBeNull();
+  });
+});
+
+describe('a machine with an agent and no kubelet', () => {
+  const host = {
+    sampledAt: NOW,
+    cpuPercent: 12,
+    memUsedBytes: 2_000_000_000,
+    memTotalBytes: 8_000_000_000,
+  } as unknown as LiveHostMetrics;
+
+  /**
+   * A host outside the cluster reports to the same endpoint and used to reach
+   * no screen at all: the live view was built from kubelet readings, and it has
+   * none.
+   */
+  it('appears in the current readings', () => {
+    const cache = new LiveCache();
+    cache.recordHost('buildbox', host);
+
+    const current = cache.current(NOW);
+    expect(current.map((metrics) => metrics.node)).toEqual(['buildbox']);
+    expect(current[0]?.host).toBe(host);
+  });
+
+  /** Cluster figures are about the cluster; a machine outside it must not count. */
+  it('is marked as not being a cluster node', () => {
+    const cache = new LiveCache();
+    cache.recordHost('buildbox', host);
+
+    expect(cache.current(NOW)[0]?.clusterNode).toBe(false);
+  });
+
+  it('carries no kubelet figures rather than zeroes', () => {
+    const cache = new LiveCache();
+    cache.recordHost('buildbox', host);
+
+    expect(cache.current(NOW)[0]).toMatchObject({
+      cpuMilli: null,
+      memoryBytes: null,
+      capacityCpuMilli: null,
+    });
+  });
+
+  it('goes away when its agent stops, like every other reading', () => {
+    const cache = new LiveCache(60_000);
+    cache.recordHost('buildbox', host);
+
+    expect(cache.current(NOW + 61_000)).toEqual([]);
   });
 });

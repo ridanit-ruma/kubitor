@@ -2,9 +2,13 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { AlertsService } from './alerts/service.js';
 import { createAppModule } from './app.module.js';
 import { AccountsService } from './auth/accounts.service.js';
+import { AgentsService } from './auth/agents.service.js';
 import { AuthService } from './auth/auth.service.js';
+import { BackupRunner } from './backup/runner.js';
+import { agentStatus } from './collect/agent-status.js';
 import { coreIntegration } from './collect/core.integration.js';
 import { HostIngest } from './collect/host-ingest.js';
 import { LiveCache } from './collect/live-cache.js';
@@ -13,12 +17,15 @@ import { loadConfig } from './config.js';
 import { AccountEventsRepo } from './db/account-events.repo.js';
 import { AccountsRepo } from './db/accounts.repo.js';
 import { AgentTokensRepo } from './db/agent-tokens.repo.js';
+import { AlertsRepo } from './db/alerts.repo.js';
+import { BackupsRepo } from './db/backups.repo.js';
 import { createDb } from './db/connect.js';
 import { sqlFor } from './db/dialect.js';
 import { IntegrationStateRepo } from './db/integration-state.repo.js';
 import { LoginAttemptsRepo } from './db/login-attempts.repo.js';
 import { migrateToLatest } from './db/migrate.js';
 import { NodeSamplesRepo } from './db/node-samples.repo.js';
+import { NotificationsRepo } from './db/notifications.repo.js';
 import { sweepRetention } from './db/retention.js';
 import { SessionsRepo } from './db/sessions.repo.js';
 import { TABLES } from './db/tables.js';
@@ -29,6 +36,8 @@ import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
 import { clusterJwksReader, ownNamespace, ServiceAccountVerifier } from './kube/sa-token.js';
+import { channelsFrom } from './notify/build.js';
+import { Dispatcher } from './notify/dispatcher.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
 import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
 import { INTEGRATIONS } from './plugins/index.js';
@@ -114,6 +123,23 @@ async function bootstrap(): Promise<void> {
   const pipeline = new IngestPipeline(db, dialect);
   const query = new FacetQuery(db, dialect);
   const agentTokens = new AgentTokensRepo(db);
+  const agents = new AgentsService(agentTokens);
+
+  // Off unless a bucket is named. A configured backup starts its schedule once
+  // the server is listening, not here — nothing should run before the process
+  // is able to serve.
+  const backupRecords = new BackupsRepo(db);
+  const backup = config.backup
+    ? new BackupRunner({
+        config: config.backup,
+        db,
+        records: backupRecords,
+        now: () => new Date(),
+        log: (message) => logger.log(message),
+      })
+    : null;
+  const nodeNames = async (): Promise<string[]> =>
+    kube ? (await kube.listNodes()).map((node) => node.name) : [];
 
   const hostIngest = new HostIngest({ cache: liveCache, pipeline });
 
@@ -185,24 +211,47 @@ async function bootstrap(): Promise<void> {
       version: kube ? await kube.serverVersion() : 'unknown',
       nodes: kube ? (await kube.listNodes()).length : 0,
     }),
-    agentStatus: async () => {
-      const now = Date.now();
-      const reporting = liveCache.reportingHosts(now);
-      const known = await agentTokens.list();
-      const expected = kube ? (await kube.listNodes()).length : reporting.length;
+    agentStatus: async () =>
+      agentStatus({
+        reporting: liveCache.reportingHosts(Date.now()),
+        nodes: await nodeNames(),
+        credentialed: (await agentTokens.list()).map((token) => token.node),
+      }),
+  });
 
-      return {
-        // "Installed" means a node has actually reported, not that a manifest
-        // exists: a DaemonSet that cannot reach the server is not installed
-        // from the dashboard's point of view.
-        installed: reporting.length > 0,
-        reporting: reporting.length,
-        expected,
-        stale: known
-          .map((token) => token.node)
-          .filter((node) => !reporting.includes(node))
-          .sort(),
-      };
+  // The same computation the manifest reports, so the screen and the alert
+  // cannot disagree about which machines have gone quiet.
+  const staleAgents = async (): Promise<readonly string[]> =>
+    agentStatus({
+      reporting: liveCache.reportingHosts(Date.now()),
+      nodes: await nodeNames(),
+      credentialed: (await agentTokens.list()).map((token) => token.node),
+    }).stale;
+
+  const alertRecords = new AlertsRepo(db, dialect);
+
+  // Queuing is synchronous with evaluation and cannot fail; sending is
+  // asynchronous and fails all the time. An unreachable Discord must never be
+  // able to slow the loop that notices things are broken.
+  const notifications = new NotificationsRepo(db);
+  const dispatcher = new Dispatcher({
+    channels: channelsFrom(config.notify),
+    notifications,
+    alerts: alertRecords,
+    deps: { fetch: globalThis.fetch, baseUrl: config.publicUrl ?? null },
+    now: () => Date.now(),
+    log: (message) => logger.warn(message),
+  });
+
+  const alerts = new AlertsService({
+    db,
+    alerts: alertRecords,
+    backups: config.backup ? backupRecords : null,
+    staleAgents,
+    now: () => Date.now(),
+    log: (message) => logger.log(message),
+    onTransitions: (transitions) => {
+      void dispatcher.enqueue(transitions);
     },
   });
 
@@ -269,6 +318,12 @@ async function bootstrap(): Promise<void> {
       liveCache,
       pipeline,
       agentTokens,
+      agents,
+      nodeNames,
+      backup,
+      alerts,
+      notifications,
+      dispatcher,
       hostIngest,
       saVerifier,
     }),
@@ -295,6 +350,9 @@ async function bootstrap(): Promise<void> {
     clearInterval(detectionTimer);
     clearInterval(retentionTimer);
     scheduler.stop();
+    backup?.stop();
+    alerts.stop();
+    dispatcher.stop();
     await gateway.close();
     await app.close();
     await db.destroy();
@@ -305,6 +363,21 @@ async function bootstrap(): Promise<void> {
   await app.listen(config.port, '0.0.0.0');
   gateway.attach(app.getHttpServer());
   logger.log(`Listening on ${config.port}`);
+
+  alerts.start();
+  dispatcher.start();
+  if (dispatcher.configured) {
+    logger.log(
+      `Notifying ${channelsFrom(config.notify)
+        .map((c) => c.channel.id)
+        .join(', ')}`,
+    );
+  }
+
+  if (backup) {
+    backup.start();
+    logger.log(`Backups to ${config.backup?.bucket} on "${config.backup?.schedule}"`);
+  }
 }
 
 await bootstrap();

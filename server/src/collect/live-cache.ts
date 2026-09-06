@@ -24,6 +24,14 @@ export interface LiveNodeMetrics {
   /** Bytes per second, derived from the cumulative counters. */
   netRxBytesPerSecond: number | null;
   netTxBytesPerSecond: number | null;
+  /**
+   * The kubelet reports this machine, so it is a member of the cluster.
+   *
+   * False for a machine only the agent knows about. Screens that speak about
+   * the cluster — how loaded it is, how many nodes it has — must not count
+   * those, and screens about machines must show them.
+   */
+  clusterNode: boolean;
   /** Present only where the agent is installed. */
   host?: LiveHostMetrics;
 }
@@ -154,6 +162,7 @@ export class LiveCache {
       fsCapacityBytes: sample.fsCapacityBytes,
       netRxBytesPerSecond: rx,
       netTxBytesPerSecond: tx,
+      clusterNode: true,
     });
   }
 
@@ -164,15 +173,27 @@ export class LiveCache {
    * otherwise, and a frozen number that looks live is worse than a gap.
    */
   current(now: number): LiveNodeMetrics[] {
-    return [...this.#latest.values()]
-      .filter((metrics) => now - metrics.sampledAt <= this.#stalenessMs)
-      .map((metrics) => {
-        const host = this.#host.get(metrics.node);
-        // Host readings go stale on their own schedule: an agent that stopped a
-        // minute ago must not leave a frozen clock beside a live CPU figure.
-        if (!host || now - host.sampledAt > this.#stalenessMs) return metrics;
-        return { ...metrics, host };
-      });
+    const fresh = (at: number): boolean => now - at <= this.#stalenessMs;
+    const result: LiveNodeMetrics[] = [];
+
+    for (const metrics of this.#latest.values()) {
+      if (!fresh(metrics.sampledAt)) continue;
+
+      const host = this.#host.get(metrics.node);
+      // Host readings go stale on their own schedule: an agent that stopped a
+      // minute ago must not leave a frozen clock beside a live CPU figure.
+      result.push(host && fresh(host.sampledAt) ? { ...metrics, host } : metrics);
+    }
+
+    // A machine the kubelet has never mentioned is one only the agent reports:
+    // a host outside the cluster. Its kubelet figures are absent rather than
+    // zero, and saying so is what lets its own page show what it does have.
+    for (const [node, host] of this.#host) {
+      if (this.#latest.has(node) || !fresh(host.sampledAt)) continue;
+      result.push(standalone(node, host));
+    }
+
+    return result;
   }
 
   /** Nodes the agent is currently reporting for. */
@@ -206,4 +227,25 @@ export class LiveCache {
     this.#host.delete(node);
     this.#detail.delete(node);
   }
+}
+
+/** A machine with an agent and no kubelet: everything the cluster knows is nothing. */
+function standalone(node: string, host: LiveHostMetrics): LiveNodeMetrics {
+  return {
+    node,
+    sampledAt: host.sampledAt,
+    cpuMilli: null,
+    cpuPercent: null,
+    memoryBytes: null,
+    memoryPercent: null,
+    fsUsedBytes: null,
+    fsPercent: null,
+    capacityCpuMilli: null,
+    capacityMemoryBytes: null,
+    fsCapacityBytes: null,
+    netRxBytesPerSecond: null,
+    netTxBytesPerSecond: null,
+    clusterNode: false,
+    host,
+  };
 }

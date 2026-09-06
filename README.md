@@ -14,6 +14,10 @@ were already there.
 > **Status: early development.** It runs a real four-node cluster daily, the parts described
 > below are the parts that exist, and the interface still changes between commits.
 
+Written and owned by **ruma** ([@ridanit-ruma](https://github.com/ridanit-ruma)), and released
+under the **AGPL-3.0** — run it, modify it, and if you run a modified copy as a service for
+other people, share your changes with them. See [Copyright and licence](#copyright-and-licence).
+
 ---
 
 ## What you get
@@ -24,10 +28,11 @@ ones that are not running linked to the workloads behind them, an hour of traffi
 list of what needs attention: nodes not ready, pods in `CrashLoopBackOff`, agents gone quiet,
 warnings in the last hour.
 
-**Nodes** — a machine per page. What it is doing now, and what it is: processor model,
+**Nodes and Hosts** — a machine per page. What it is doing now, and what it is: processor model,
 topology and cache totals, memory type and speed as the firmware reports it, every mounted
 filesystem, every drive with its PCIe link and throughput, GPUs with core and memory clocks,
-and temperatures shown beside the part they belong to rather than in a list of their own.
+and temperatures shown beside the part they belong to rather than in a list of their own. The
+same page serves a machine that is not in the cluster at all.
 
 **Workloads, Namespaces, Events** — pods with the status `kubectl` would print, including the
 container reason a phase cannot express (`CrashLoopBackOff`, `ImagePullBackOff`,
@@ -107,6 +112,28 @@ copies one file — the firmware's SMBIOS table, which is the only place the mem
 truthfully recorded — and then exits. Delete that container if your cluster will not admit it;
 the agent starts anyway and falls back to what the kernel exposes.
 
+### Machines that are not nodes
+
+A cluster is rarely the whole estate. The same agent runs on any Linux machine — a build box, a
+NAS, a router — and reports to the same dashboard, where it appears under **Hosts** rather than
+Nodes.
+
+Such a machine has no service-account token to present, so it carries a static one instead:
+
+1. **Settings → Agents → Issue a token.** Name the machine as you want it to appear. The token
+   is shown once; only its hash is stored.
+2. Unpack `kubitor-agent-<version>-linux-x64.tar.gz` from a release into `/opt/kubitor-agent`,
+   put the three lines the dialog showed into `/etc/kubitor-agent.env` (mode `0600`), and
+   install `agent.service` from the tarball. It needs Node on the host.
+3. `systemctl enable --now kubitor-agent`.
+
+The token is that machine's identity: one per machine, and revoking it stops the machine
+reporting at once. A row claiming to be another machine is rewritten to the name its credential
+proves, so one compromised agent cannot speak for the fleet.
+
+The **Hosts** screen appears in the navigation only once a machine outside the cluster reports.
+Until then it would list exactly what Nodes lists.
+
 ### What it asks the cluster for
 
 Read-only, and only what the screens use: `get`/`list` on nodes, pods, namespaces, events,
@@ -128,9 +155,120 @@ by construction.
 | `KUBITOR_TRUSTED_PROXY_HEADER` | `x-forwarded-for` | The header carrying the real client IP |
 | `KUBITOR_COOKIE_SECURE` | `true` | Set `false` only for plain-HTTP development |
 | `KUBITOR_AGENT_SERVICE_ACCOUNT` | `kubitor-agent` | The only service account whose token may report host metrics |
+| `KUBITOR_BACKUP_S3_BUCKET` | — | Setting it turns backups on; see below |
+| `KUBITOR_BACKUP_SCHEDULE` | `17 3 * * *` | Five-field cron |
+| `KUBITOR_NOTIFY_MIN_SEVERITY` | `warning` | Nothing quieter than this is sent |
+| `KUBITOR_PUBLIC_URL` | — | Where kubitor is reachable, for links in messages |
+
+The agent takes `KUBITOR_SERVER_URL`, `KUBITOR_HOST_NAME` (the machine's name; `KUBITOR_NODE_NAME`
+still works) and either `KUBITOR_AGENT_TOKEN` or a projected token mounted at
+`/var/run/secrets/kubitor/token`.
 
 SQLite on one volume is the default and is enough for a cluster of this size; PostgreSQL is
 there for people who would rather not have a stateful volume.
+
+## Alerts, and telling somebody
+
+kubitor evaluates a short list of rules once a minute and keeps each result as a
+thing with a name — `pod-crashloop` on `kubitor/server-7d9` — rather than a
+count. That identity is what makes the difference between a notification and a
+firehose: a condition that is still true is the same alert continuing, and
+produces nothing.
+
+Rules today: a node not ready, a pod crash-looping, a pod that cannot be
+scheduled, a pod that cannot pull its image, an agent that stopped reporting,
+and a backup that failed. The last two are kubitor watching itself.
+
+**Nothing fires on the first evaluation.** A condition has to hold for more than
+one pass before anybody hears about it, and be gone for more than one before it
+is called recovered — so a pod that restarts once, or a node that blinks while
+its kubelet restarts, never reaches a channel. **Recoveries are sent too.** A
+channel that only ever reports bad news is one people learn to ignore, because
+they cannot tell an outage from its aftermath.
+
+```bash
+KUBITOR_NOTIFY_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+KUBITOR_NOTIFY_SLACK_WEBHOOK=https://hooks.slack.com/services/...
+KUBITOR_NOTIFY_TELEGRAM_TOKEN=123456:ABC...     # and _CHAT_ID
+KUBITOR_NOTIFY_WEBHOOK_URL=https://example.com/hook   # the raw alert, as JSON
+KUBITOR_NOTIFY_MIN_SEVERITY=warning             # or critical
+KUBITOR_PUBLIC_URL=https://kubitor.example.com  # so messages can link back
+```
+
+Set none of them and alerts are still recorded and still on screen; they simply
+go nowhere. Delivery is queued and retried with backoff, so a rate limit or a
+restart does not lose a message, and what could not be delivered is shown on the
+Alerts screen rather than dropped in silence.
+
+The Telegram chat id is not discoverable from the token: message the bot once,
+then read `https://api.telegram.org/bot<token>/getUpdates`.
+
+> **kubitor cannot tell you that kubitor has stopped.** Nothing inside a cluster
+> can report the cluster being gone. Point a dead-man's switch — healthchecks.io,
+> Uptime Kuma, cron-job.org — at something that pings while kubitor is alive, and
+> let silence be the alarm.
+
+## Backups
+
+kubitor keeps accounts, agent credentials, integration settings and every
+reading in one database. Point it at an S3-compatible bucket and it copies that
+database there on a schedule — and then **reads it back to check it**, because a
+backup nobody has restored is not a backup.
+
+```bash
+KUBITOR_BACKUP_S3_ENDPOINT=https://s3.eu-central-1.amazonaws.com
+KUBITOR_BACKUP_S3_BUCKET=my-kubitor-backups
+KUBITOR_BACKUP_S3_ACCESS_KEY=...
+KUBITOR_BACKUP_S3_SECRET_KEY=...
+KUBITOR_BACKUP_AGE_RECIPIENT=age1...        # optional, and recommended
+KUBITOR_BACKUP_SCHEDULE="17 3 * * *"        # the default
+```
+
+Any S3-compatible store works — AWS, MinIO, Backblaze B2, Cloudflare R2, Ceph
+RGW. Prefer one the cluster does not depend on: a backup kept on storage served
+by the cluster it backs up survives none of the events backups exist for.
+
+**Encryption is a public key, and only a public key.** Give kubitor an age
+recipient and it writes backups **it cannot itself read** — a compromised server,
+or a leaked bucket, yields ciphertext. The identity stays where you keep keys.
+(If you would rather kubitor verified each upload by opening it, set
+`KUBITOR_BACKUP_AGE_IDENTITY` too and accept that it can then read its own
+history. The Backups screen says which is in force.)
+
+**Retention belongs to the bucket.** Expiring old objects is a lifecycle rule,
+which every provider has and none of them get wrong:
+
+```json
+{ "Rules": [{ "ID": "kubitor", "Status": "Enabled",
+  "Filter": { "Prefix": "" }, "Expiration": { "Days": 90 } }] }
+```
+
+Running PostgreSQL instead? kubitor does not back that up. Use your database's
+own backup rather than a second, worse one here — the Backups screen says so
+rather than looking configured.
+
+### Restoring
+
+```bash
+# 1. Stop the server, so nothing writes while you swap the file underneath it.
+kubectl -n kubitor scale deploy/kubitor-server --replicas=0
+
+# 2. Fetch the object and decrypt it with the identity you kept.
+aws s3 cp s3://my-kubitor-backups/kubitor-20260906T031700Z.db.age .
+age --decrypt -i ~/keys/kubitor.age -o kubitor.db kubitor-20260906T031700Z.db.age
+
+# 3. Check it before you trust it, and check what schema it holds.
+sqlite3 kubitor.db 'PRAGMA integrity_check;'
+sqlite3 kubitor.db 'SELECT name FROM kysely_migration ORDER BY name DESC LIMIT 1;'
+
+# 4. Put it in place of the live file and start the server.
+kubectl -n kubitor cp kubitor.db <pod>:/var/lib/kubitor/kubitor.db
+kubectl -n kubitor scale deploy/kubitor-server --replicas=1
+```
+
+Step 3 matters: if the migration in the backup is **newer** than the image you
+are restoring into, roll the image forward first. A restore discovered halfway
+through a migration is the worst version of this.
 
 ## Security
 
@@ -173,6 +311,19 @@ Integrations are first-party modules in `server/src/integrations/`: no plugin ru
 sandbox, no signature verification. A new one is a pull request, and testing it needs a fake
 Kubernetes client and an assertion on what it emits — no framework harness, no database.
 
-## License
+## Copyright and licence
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+kubitor is written and owned by **ruma** ([@ridanit-ruma](https://github.com/ridanit-ruma)).
+Copyright © 2026 ruma. All rights reserved except as granted by the licence below.
+
+Licensed under the **GNU Affero General Public License, version 3** — see
+[LICENSE](LICENSE).
+
+The AGPL is deliberate. kubitor is a dashboard people reach over a network, and
+that is exactly the case an ordinary GPL does not cover: someone could run a
+modified kubitor as a service for others and never publish a line of it. Under
+the AGPL, **running a modified version for other people over a network obliges
+you to offer them its source**. Using it unmodified obliges you to nothing, and
+watching your own cluster with it is not "for other people".
+
+Contributions are welcome under the same licence.

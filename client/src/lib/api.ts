@@ -105,7 +105,112 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ currentPassword }),
     }),
+
+  agents: () => request<{ agents: AgentSummary[] }>('/api/agents'),
+
+  /** The plaintext comes back once; only its hash is stored. */
+  issueAgent: (name: string, currentPassword: string) =>
+    request<{ name: string; token: string }>('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({ name, currentPassword }),
+    }),
+
+  revokeAgent: (name: string, currentPassword: string) =>
+    request<void>(`/api/agents/${encodeURIComponent(name)}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword }),
+    }),
+
+  alerts: () => request<AlertsPage>('/api/alerts'),
+
+  backups: () => request<BackupStatus>('/api/backups'),
+
+  runBackup: (currentPassword: string) =>
+    request<{ ok: boolean; key?: string; bytes?: number; error?: string }>('/api/backups/run', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword }),
+    }),
 };
+
+/**
+ * One thing that is wrong, from when it was noticed until it cleared.
+ *
+ * `rule` and `subject` together are its identity, which is why a recurrence is
+ * a second record rather than a revived first one.
+ */
+export interface AlertRecord {
+  id: string;
+  rule: string;
+  subject: string;
+  severity: 'critical' | 'warning';
+  summary: string;
+  detail: string | null;
+  /** `pending` means seen but not yet held long enough to be anybody's problem. */
+  state: 'pending' | 'firing';
+  firstSeenAt: number;
+  lastSeenAt: number;
+  firedAt: number | null;
+  resolvedAt: number | null;
+  attrs: Record<string, unknown>;
+}
+
+/** One message to one channel, from queued to delivered or abandoned. */
+export interface QueuedNotification {
+  seq: number;
+  alertId: string;
+  channel: string;
+  kind: 'fired' | 'resolved';
+  createdAt: number;
+  attempts: number;
+  finishedAt: number | null;
+  delivered: boolean;
+  error: string | null;
+}
+
+export interface AlertsPage {
+  firing: AlertRecord[];
+  recent: AlertRecord[];
+  /** Whether anything is being told, and whether it is getting through. */
+  delivery: { configured: boolean; pending: number; recent: QueuedNotification[] };
+}
+
+/** One attempt at a backup, successful or not. */
+export interface BackupRecord {
+  id: string;
+  startedAt: number;
+  finishedAt: number | null;
+  key: string | null;
+  bytes: number | null;
+  encrypted: boolean;
+  /** Read back out of the bucket and opened. */
+  verified: boolean;
+  ok: boolean;
+  error: string | null;
+}
+
+export type BackupStatus =
+  | { configured: false; backups: [] }
+  | {
+      configured: true;
+      bucket: string;
+      endpoint: string;
+      /** `write-only` means kubitor cannot read back what it wrote. */
+      encryption: 'none' | 'write-only' | 'readable';
+      schedule: string;
+      nextRunAt: number | null;
+      newestVerifiedAt: number | null;
+      running: boolean;
+      backups: BackupRecord[];
+    };
+
+/** A credential for an agent that cannot present a service-account token. */
+export interface AgentSummary {
+  name: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  /** Also a Kubernetes node, so this is a second way to report as one. */
+  isNode: boolean;
+}
 
 /** The export link is a plain href so the browser handles the download. */
 export function exportHref(facet: string, query: URLSearchParams, format: 'json' | 'csv'): string {
@@ -160,7 +265,14 @@ export interface LiveNodeMetrics {
   fsCapacityBytes: number | null;
   netRxBytesPerSecond: number | null;
   netTxBytesPerSecond: number | null;
-  /** Present only on nodes running the agent. */
+  /**
+   * The kubelet reports this machine, so it belongs to the cluster.
+   *
+   * False for a machine only the agent knows about. Anything said about the
+   * cluster as a whole has to leave those out.
+   */
+  clusterNode: boolean;
+  /** Present only on machines running the agent. */
   host?: LiveHostMetrics;
 }
 

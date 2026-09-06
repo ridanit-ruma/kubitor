@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { milliCelsiusToCelsius, readCpuMhz, readHwmonTemperatures, sensorRecord } from './hwmon.js';
-import { batchWithin, decideRetry, Sender } from './sender.js';
+import { batchWithin, decideRetry, deliveryNote, Sender } from './sender.js';
 
 describe('milliCelsiusToCelsius', () => {
   it('converts milli-degrees to one decimal place', () => {
@@ -207,5 +207,52 @@ describe('batchWithin', () => {
 
   it('has nothing to send from an empty buffer', () => {
     expect(batchWithin([], 100)).toEqual([]);
+  });
+});
+
+describe('deliveryNote', () => {
+  const SERVER = 'https://kubitor.example.com';
+  /**
+   * The case that prompted this: a revoked token is a 4xx, the buffer advances
+   * so the stream cannot wedge, and the agent used to say nothing at all. Its
+   * log then looked exactly like a working agent's while every reading was
+   * discarded.
+   */
+  it('names a refused credential and what to do about it', () => {
+    const note = deliveryNote({ advance: true, status: 401 }, 0, SERVER);
+
+    expect(note).toContain('401');
+    expect(note).toContain('KUBITOR_AGENT_TOKEN');
+  });
+
+  it('says the same for a forbidden one', () => {
+    expect(deliveryNote({ advance: true, status: 403 }, 0, SERVER)).toContain(
+      'credential was refused',
+    );
+  });
+
+  it('says readings were dropped when the buffer advanced', () => {
+    expect(deliveryNote({ advance: true, status: 400 }, 0, SERVER)).toContain('dropped');
+  });
+
+  it('says how much is held when the buffer did not advance', () => {
+    expect(deliveryNote({ advance: false, status: 503 }, 12, SERVER)).toContain('holding 12 rows');
+  });
+
+  it('stays quiet when the server took the batch', () => {
+    expect(deliveryNote({ advance: true, status: 202 }, 0, SERVER)).toBeNull();
+  });
+
+  /**
+   * The case an agent is in when the thing it reports to has died — and, on a
+   * cluster with an agent per node, the only signal any surviving process has
+   * that the server is gone. It used to be the quietest of all.
+   */
+  it('says it cannot reach the server, which nothing else can observe', () => {
+    const note = deliveryNote({ advance: false, status: null }, 5, SERVER);
+
+    expect(note).toContain('cannot reach');
+    expect(note).toContain(SERVER);
+    expect(note).toContain('holding 5 readings');
   });
 });

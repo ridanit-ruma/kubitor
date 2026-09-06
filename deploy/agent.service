@@ -1,0 +1,54 @@
+# kubitor agent, for a machine that is not a Kubernetes node.
+#
+# Agents inside the cluster run as a DaemonSet and prove which node they are
+# with a token the API server signed. A machine outside the cluster has no such
+# token, so it carries a static one issued under Settings -> Agents.
+#
+# Install:
+#   mkdir -p /opt/kubitor-agent
+#   tar -xzf kubitor-agent-<version>-linux-x64.tar.gz -C /opt/kubitor-agent
+#   install -m 0600 /dev/null /etc/kubitor-agent.env      # then fill it in
+#   cp agent.service /etc/systemd/system/kubitor-agent.service
+#   systemctl enable --now kubitor-agent
+#
+# /etc/kubitor-agent.env holds the three lines the dashboard shows when it
+# issues the token. It is the machine's credential: keep it 0600.
+#
+#   KUBITOR_SERVER_URL=https://kubitor.example.com
+#   KUBITOR_HOST_NAME=buildbox
+#   KUBITOR_AGENT_TOKEN=...
+
+[Unit]
+Description=kubitor host agent
+Documentation=https://github.com/ridanit-ruma/kubitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env node /opt/kubitor-agent/dist/main.js
+EnvironmentFile=/etc/kubitor-agent.env
+Restart=always
+RestartSec=5
+
+# The agent reads /proc and /sys and writes nothing anywhere. None of the
+# hardening below is needed for it to work; all of it is needed for that
+# sentence to stay true.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

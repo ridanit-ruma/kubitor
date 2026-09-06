@@ -10,6 +10,9 @@ import { cpuUtilizationMigration } from './0007-cpu-utilization.js';
 import { hostInventoryMigration } from './0008-host-inventory.js';
 import { sensorsMigration } from './0009-sensors.js';
 import { podReasonMigration } from './0010-pod-reason.js';
+import { backupsMigration } from './0011-backups.js';
+import { alertsMigration } from './0012-alerts.js';
+import { notificationsMigration } from './0013-notifications.js';
 
 /**
  * One ordered chain for both dialects. Keys sort lexicographically and are the
@@ -27,5 +30,8 @@ export function createMigrations(dialect: DialectSql): Record<string, Migration>
     '0008-host-inventory': hostInventoryMigration(dialect),
     '0009-sensors': sensorsMigration(dialect),
     '0010-pod-reason': podReasonMigration(dialect),
+    '0011-backups': backupsMigration(dialect),
+    '0012-alerts': alertsMigration(dialect),
+    '0013-notifications': notificationsMigration(dialect),
   };
 }

@@ -90,7 +90,9 @@ export default function NodesPage() {
         filters={[{ key: 'ready', label: 'States', values: ['1', '0'] }]}
         searchPlaceholder="Find a node by name, OS or kubelet version"
         emptyMessage="No node has been collected yet."
-        onRowHref={(row) => `/nodes/${encodeURIComponent(row.name)}`}
+        // The machine page is `/hosts/[name]`: one page per machine, whether or
+        // not Kubernetes has heard of it.
+        onRowHref={(row) => `/hosts/${encodeURIComponent(row.name)}`}
       />
     </div>
   );

@@ -24,6 +24,7 @@ function metrics(node: string, sampledAt: number): LiveNodeMetrics {
     fsCapacityBytes: 20_480,
     netRxBytesPerSecond: 100,
     netTxBytesPerSecond: 200,
+    clusterNode: true,
   };
 }
 
