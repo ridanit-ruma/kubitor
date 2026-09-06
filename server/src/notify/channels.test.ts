@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AlertRecord } from '../db/alerts.repo.js';
 import { atLeast, body, type ChannelDeps, headline, type Notification } from './channel.js';
-import { discordChannel, slackChannel, telegramChannel, webhookChannel } from './channels.js';
+import {
+  discordChannel,
+  gotifyChannel,
+  ntfyChannel,
+  slackChannel,
+  telegramChannel,
+  webhookChannel,
+} from './channels.js';
 
 const NOW = 1_756_800_000_000;
 
@@ -144,5 +151,53 @@ describe('webhook', () => {
       kind: 'fired',
       alert: { rule: 'node-not-ready', subject: 'ken', severity: 'critical' },
     });
+  });
+});
+
+describe('ntfy', () => {
+  it('posts to the server root, so the token has somewhere to go', async () => {
+    const { calls, deps } = capturing();
+    await ntfyChannel('https://ntfy.sh/', 'kubitor', 'tk_abc').send(FIRED, deps);
+
+    expect(calls[0]?.url).toBe('https://ntfy.sh');
+    expect(calls[0]?.body).toMatchObject({ topic: 'kubitor' });
+  });
+
+  /** Good news should not buzz a phone at three in the morning. */
+  it('is loud for a failure and quiet for a recovery', async () => {
+    const { calls, deps } = capturing();
+    const channel = ntfyChannel('https://ntfy.sh', 'kubitor');
+
+    await channel.send(FIRED, deps);
+    await channel.send(RESOLVED, deps);
+
+    const priorities = calls.map((call) => (call.body as { priority: number }).priority);
+    expect(priorities[0]).toBeGreaterThan(priorities[1] as number);
+  });
+
+  it('throws on a refusal, like every other channel', async () => {
+    const { deps } = capturing(403, 'forbidden');
+
+    await expect(ntfyChannel('https://ntfy.sh', 'kubitor').send(FIRED, deps)).rejects.toThrow(
+      /403/,
+    );
+  });
+});
+
+describe('gotify', () => {
+  it('puts the token in the query string, which is what Gotify wants', async () => {
+    const { calls, deps } = capturing();
+    await gotifyChannel('https://gotify.example.com/', 'AbC123').send(FIRED, deps);
+
+    expect(calls[0]?.url).toBe('https://gotify.example.com/message?token=AbC123');
+  });
+
+  it('carries the headline as the title', async () => {
+    const { calls, deps } = capturing();
+    await gotifyChannel('https://gotify.example.com', 'tok').send(FIRED, deps);
+
+    expect((calls[0]?.body as { title?: string } | undefined)?.title).toContain(
+      'Node ken is not ready',
+    );
   });
 });

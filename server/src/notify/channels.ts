@@ -70,6 +70,75 @@ export function telegramChannel(token: string, chatId: string): Channel {
 }
 
 /**
+ * ntfy, which is push without a vendor and self-hostable.
+ *
+ * Posted as JSON to the server root rather than to `/topic`, because that form
+ * carries the title and priority as fields instead of as headers, and an
+ * access token has somewhere to go.
+ */
+export function ntfyChannel(server: string, topic: string, token?: string): Channel {
+  return {
+    id: 'ntfy',
+    title: 'ntfy',
+    async send(notification, deps) {
+      const response = await deps.fetch(server.replace(/\/+$/, ''), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          topic,
+          title: headline(notification),
+          message: body(notification, deps.baseUrl),
+          // Loud for a failure, quiet for a recovery: good news should not
+          // buzz a phone at three in the morning.
+          priority:
+            notification.kind === 'resolved'
+              ? 2
+              : notification.alert.severity === 'critical'
+                ? 5
+                : 4,
+          tags: [notification.kind === 'resolved' ? 'white_check_mark' : 'rotating_light'],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `ntfy answered ${response.status}: ${(await response.text()).slice(0, 200)}`,
+        );
+      }
+    },
+  };
+}
+
+/** Gotify, which is the same idea with the token in the query string. */
+export function gotifyChannel(server: string, token: string): Channel {
+  return {
+    id: 'gotify',
+    title: 'Gotify',
+    async send(notification, deps) {
+      const url = `${server.replace(/\/+$/, '')}/message?token=${encodeURIComponent(token)}`;
+      const response = await deps.fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: headline(notification),
+          message: body(notification, deps.baseUrl),
+          priority: notification.kind === 'resolved' ? 2 : 8,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Gotify answered ${response.status}: ${(await response.text()).slice(0, 200)}`,
+        );
+      }
+    },
+  };
+}
+
+/**
  * A plain webhook, for everything else.
  *
  * The whole alert, as JSON, unformatted. Anyone with a receiver of their own —

@@ -71,6 +71,16 @@ const schema = z
      * one per channel because a routing table is a feature nobody has asked for
      * yet, and the wrong shape is harder to remove than to add.
      */
+    /** Push without a vendor, self-hostable. */
+    KUBITOR_NOTIFY_NTFY_SERVER: z.string().url().optional(),
+    KUBITOR_NOTIFY_NTFY_TOPIC: z.string().min(1).optional(),
+    KUBITOR_NOTIFY_NTFY_TOKEN: z.string().min(1).optional(),
+    KUBITOR_NOTIFY_GOTIFY_SERVER: z.string().url().optional(),
+    KUBITOR_NOTIFY_GOTIFY_TOKEN: z.string().min(1).optional(),
+    /** `smtps://user:pass@smtp.example.com:465`, which carries everything. */
+    KUBITOR_NOTIFY_SMTP_URL: z.string().min(1).optional(),
+    KUBITOR_NOTIFY_SMTP_FROM: z.string().min(1).optional(),
+    KUBITOR_NOTIFY_SMTP_TO: z.string().min(1).optional(),
     KUBITOR_NOTIFY_MIN_SEVERITY: z.enum(['critical', 'warning']).default('warning'),
     /** Where this kubitor is reachable, so a message can link back to it. */
     KUBITOR_PUBLIC_URL: z.string().url().optional(),
@@ -120,6 +130,32 @@ const schema = z
       });
     }
 
+    // Every channel that needs more than one value needs all of them; half a
+    // configuration sends nothing and says nothing.
+    const groups: [string, (string | undefined)[]][] = [
+      [
+        'KUBITOR_NOTIFY_NTFY_TOPIC',
+        [value.KUBITOR_NOTIFY_NTFY_SERVER, value.KUBITOR_NOTIFY_NTFY_TOPIC],
+      ],
+      [
+        'KUBITOR_NOTIFY_GOTIFY_TOKEN',
+        [value.KUBITOR_NOTIFY_GOTIFY_SERVER, value.KUBITOR_NOTIFY_GOTIFY_TOKEN],
+      ],
+      [
+        'KUBITOR_NOTIFY_SMTP_TO',
+        [
+          value.KUBITOR_NOTIFY_SMTP_URL,
+          value.KUBITOR_NOTIFY_SMTP_FROM,
+          value.KUBITOR_NOTIFY_SMTP_TO,
+        ],
+      ],
+    ];
+    for (const [path, parts] of groups) {
+      if (parts.some(Boolean) && !parts.every(Boolean)) {
+        ctx.addIssue({ code: 'custom', path: [path], message: 'is needed alongside the others' });
+      }
+    }
+
     if (value.KUBITOR_BACKUP_AGE_IDENTITY && !value.KUBITOR_BACKUP_AGE_RECIPIENT) {
       ctx.addIssue({
         code: 'custom',
@@ -153,6 +189,9 @@ export interface NotifyConfig {
   slackWebhook?: string;
   webhookUrl?: string;
   telegram?: { token: string; chatId: string };
+  ntfy?: { server: string; topic: string; token?: string };
+  gotify?: { server: string; token: string };
+  smtp?: { url: string; from: string; to: string };
   minimumSeverity: 'critical' | 'warning';
 }
 
@@ -210,6 +249,36 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
             telegram: {
               token: value.KUBITOR_NOTIFY_TELEGRAM_TOKEN,
               chatId: value.KUBITOR_NOTIFY_TELEGRAM_CHAT_ID,
+            },
+          }
+        : {}),
+      ...(value.KUBITOR_NOTIFY_NTFY_SERVER && value.KUBITOR_NOTIFY_NTFY_TOPIC
+        ? {
+            ntfy: {
+              server: value.KUBITOR_NOTIFY_NTFY_SERVER,
+              topic: value.KUBITOR_NOTIFY_NTFY_TOPIC,
+              ...(value.KUBITOR_NOTIFY_NTFY_TOKEN
+                ? { token: value.KUBITOR_NOTIFY_NTFY_TOKEN }
+                : {}),
+            },
+          }
+        : {}),
+      ...(value.KUBITOR_NOTIFY_GOTIFY_SERVER && value.KUBITOR_NOTIFY_GOTIFY_TOKEN
+        ? {
+            gotify: {
+              server: value.KUBITOR_NOTIFY_GOTIFY_SERVER,
+              token: value.KUBITOR_NOTIFY_GOTIFY_TOKEN,
+            },
+          }
+        : {}),
+      ...(value.KUBITOR_NOTIFY_SMTP_URL &&
+      value.KUBITOR_NOTIFY_SMTP_FROM &&
+      value.KUBITOR_NOTIFY_SMTP_TO
+        ? {
+            smtp: {
+              url: value.KUBITOR_NOTIFY_SMTP_URL,
+              from: value.KUBITOR_NOTIFY_SMTP_FROM,
+              to: value.KUBITOR_NOTIFY_SMTP_TO,
             },
           }
         : {}),

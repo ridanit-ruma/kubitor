@@ -29,6 +29,17 @@ describe('channelsFrom', () => {
     expect(bindings.every((b) => b.minimumSeverity === 'critical')).toBe(true);
   });
 
+  it('builds the push and mail channels too', () => {
+    const bindings = channelsFrom({
+      ntfy: { server: 'https://ntfy.sh', topic: 'kubitor' },
+      gotify: { server: 'https://gotify.example.com', token: 'tok' },
+      smtp: { url: 'smtp://localhost:2525', from: 'kubitor@example.com', to: 'ops@example.com' },
+      minimumSeverity: 'warning',
+    });
+
+    expect(bindings.map((b) => b.channel.id)).toEqual(['ntfy', 'gotify', 'email']);
+  });
+
   /** Half a Telegram configuration is refused in config.ts, not silently built. */
   it('builds no telegram channel without both halves', () => {
     expect(channelsFrom({ minimumSeverity: 'warning' }).length).toBe(0);

@@ -192,10 +192,18 @@ they cannot tell an outage from its aftermath.
 KUBITOR_NOTIFY_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
 KUBITOR_NOTIFY_SLACK_WEBHOOK=https://hooks.slack.com/services/...
 KUBITOR_NOTIFY_TELEGRAM_TOKEN=123456:ABC...     # and _CHAT_ID
+KUBITOR_NOTIFY_NTFY_SERVER=https://ntfy.sh      # and _TOPIC, optionally _TOKEN
+KUBITOR_NOTIFY_GOTIFY_SERVER=https://gotify...  # and _TOKEN
+KUBITOR_NOTIFY_SMTP_URL=smtps://user:pass@smtp.example.com:465  # and _FROM, _TO
 KUBITOR_NOTIFY_WEBHOOK_URL=https://example.com/hook   # the raw alert, as JSON
 KUBITOR_NOTIFY_MIN_SEVERITY=warning             # or critical
 KUBITOR_PUBLIC_URL=https://kubitor.example.com  # so messages can link back
 ```
+
+Set as many as you like; each gets every alert that clears the severity floor.
+ntfy and Gotify are self-hostable, so push does not have to mean a vendor. Email
+puts the whole alert in the subject line, because a phone's lock screen shows
+the subject and nothing else.
 
 Set none of them and alerts are still recorded and still on screen; they simply
 go nowhere. Delivery is queued and retried with backoff, so a rate limit or a
