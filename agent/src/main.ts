@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { hostNameFrom } from './identity.js';
 import { createHostCollector } from './reading.js';
 import { deliveryNote, Sender } from './sender.js';
+import { DEFAULT_AFTER_MS, DEFAULT_REPEAT_MS, Witness } from './witness.js';
 
 /**
  * The optional half of kubitor.
@@ -27,6 +28,17 @@ const MAX_BUFFERED = Number(process.env.KUBITOR_AGENT_MAX_BUFFERED ?? 240);
  * kubelet rotates it, so it is re-read rather than remembered.
  */
 const SA_TOKEN_PATH = process.env.KUBITOR_SA_TOKEN_PATH ?? '/var/run/secrets/kubitor/token';
+
+/**
+ * Where to shout if the server stops answering.
+ *
+ * Off unless set. kubitor cannot report its own death, and this agent is one
+ * of however many processes that can — see witness.ts for why duplicates from
+ * several nodes are the point rather than a flaw.
+ */
+const WITNESS_URL = process.env.KUBITOR_AGENT_WITNESS_URL ?? null;
+const WITNESS_AFTER_MS = Number(process.env.KUBITOR_AGENT_WITNESS_AFTER_MS ?? DEFAULT_AFTER_MS);
+const WITNESS_REPEAT_MS = Number(process.env.KUBITOR_AGENT_WITNESS_REPEAT_MS ?? DEFAULT_REPEAT_MS);
 
 async function main(): Promise<void> {
   const server = required('KUBITOR_SERVER_URL').replace(/\/+$/, '');
@@ -63,7 +75,18 @@ async function main(): Promise<void> {
   process.on('SIGINT', stop);
 
   const collect = createHostCollector(node);
+  const witness = new Witness({
+    url: WITNESS_URL,
+    host: node,
+    afterMs: WITNESS_AFTER_MS,
+    repeatMs: WITNESS_REPEAT_MS,
+    log: (message) => console.warn(message),
+  });
+
   console.log(`kubitor agent reporting ${node} to ${server} every ${INTERVAL_MS}ms`);
+  if (witness.enabled) {
+    console.log(`will report the server unreachable to ${WITNESS_URL} after ${WITNESS_AFTER_MS}ms`);
+  }
 
   let lastComplaint = 0;
 
@@ -72,6 +95,12 @@ async function main(): Promise<void> {
       sender.enqueue(await collect(Date.now()));
 
       const result = await sender.flush();
+
+      // The server answered something, even a refusal: it is up. Only a
+      // missing status means unreachable, which is what the witness is for.
+      witness.record(result.status !== null);
+      await witness.check();
+
       // Once a second is too often to log a failure every time; say it at most
       // once a minute so a long outage leaves a readable trail, not a flood.
       const note = deliveryNote(result, sender.pending, server);

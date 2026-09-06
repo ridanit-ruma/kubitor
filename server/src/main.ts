@@ -38,6 +38,7 @@ import { clusterProbes } from './kube/probes.js';
 import { clusterJwksReader, ownNamespace, ServiceAccountVerifier } from './kube/sa-token.js';
 import { channelsFrom } from './notify/build.js';
 import { Dispatcher } from './notify/dispatcher.js';
+import { Heartbeat } from './notify/heartbeat.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
 import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
 import { INTEGRATIONS } from './plugins/index.js';
@@ -228,6 +229,14 @@ async function bootstrap(): Promise<void> {
       credentialed: (await agentTokens.list()).map((token) => token.node),
     }).stale;
 
+  // The last layer, and the smallest: the agents cover the server dying, and
+  // this covers the site going with it.
+  const heartbeat = new Heartbeat({
+    url: config.heartbeat?.url ?? null,
+    ...(config.heartbeat ? { intervalMs: config.heartbeat.intervalMs } : {}),
+    log: (message) => logger.warn(message),
+  });
+
   const alertRecords = new AlertsRepo(db, dialect);
 
   // Queuing is synchronous with evaluation and cannot fail; sending is
@@ -353,6 +362,7 @@ async function bootstrap(): Promise<void> {
     backup?.stop();
     alerts.stop();
     dispatcher.stop();
+    heartbeat.stop();
     await gateway.close();
     await app.close();
     await db.destroy();
@@ -366,6 +376,8 @@ async function bootstrap(): Promise<void> {
 
   alerts.start();
   dispatcher.start();
+  heartbeat.start();
+  if (heartbeat.enabled) logger.log(`Heartbeat to ${config.heartbeat?.url}`);
   if (dispatcher.configured) {
     logger.log(
       `Notifying ${channelsFrom(config.notify)

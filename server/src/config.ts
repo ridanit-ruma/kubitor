@@ -74,6 +74,14 @@ const schema = z
     KUBITOR_NOTIFY_MIN_SEVERITY: z.enum(['critical', 'warning']).default('warning'),
     /** Where this kubitor is reachable, so a message can link back to it. */
     KUBITOR_PUBLIC_URL: z.string().url().optional(),
+    /**
+     * A URL to ping while alive, so silence is somebody else's alarm.
+     *
+     * The one failure nothing inside a cluster can report is the cluster being
+     * gone. healthchecks.io, Uptime Kuma and cron-job.org all take this shape.
+     */
+    KUBITOR_HEARTBEAT_URL: z.string().url().optional(),
+    KUBITOR_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().int().min(10).default(60),
   })
   .superRefine((value, ctx) => {
     if (value.KUBITOR_DB_KIND === 'postgres' && !value.KUBITOR_POSTGRES_URL) {
@@ -136,6 +144,8 @@ export interface Config {
   notify: NotifyConfig;
   /** Where this kubitor is reachable from outside, if it knows. */
   publicUrl?: string;
+  /** Absent unless a dead-man's switch has been named. */
+  heartbeat?: { url: string; intervalMs: number };
 }
 
 export interface NotifyConfig {
@@ -206,6 +216,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       minimumSeverity: value.KUBITOR_NOTIFY_MIN_SEVERITY,
     },
     ...(value.KUBITOR_PUBLIC_URL ? { publicUrl: value.KUBITOR_PUBLIC_URL } : {}),
+    ...(value.KUBITOR_HEARTBEAT_URL
+      ? {
+          heartbeat: {
+            url: value.KUBITOR_HEARTBEAT_URL,
+            intervalMs: value.KUBITOR_HEARTBEAT_INTERVAL_SECONDS * 1000,
+          },
+        }
+      : {}),
     ...(value.KUBITOR_BACKUP_S3_BUCKET
       ? {
           backup: {

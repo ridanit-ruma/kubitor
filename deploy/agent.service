@@ -17,6 +17,12 @@
 #   KUBITOR_SERVER_URL=https://kubitor.example.com
 #   KUBITOR_HOST_NAME=buildbox
 #   KUBITOR_AGENT_TOKEN=...
+#
+# Optionally, somewhere to shout if the server stops answering. kubitor cannot
+# report its own death; this agent is one of the processes that can. Give it a
+# narrow address, not the operator's Discord webhook -- it goes on every node.
+#
+#   KUBITOR_AGENT_WITNESS_URL=https://hooks.example.com/kubitor-down
 
 [Unit]
 Description=kubitor host agent

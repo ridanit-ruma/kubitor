@@ -159,6 +159,8 @@ by construction.
 | `KUBITOR_BACKUP_SCHEDULE` | `17 3 * * *` | Five-field cron |
 | `KUBITOR_NOTIFY_MIN_SEVERITY` | `warning` | Nothing quieter than this is sent |
 | `KUBITOR_PUBLIC_URL` | — | Where kubitor is reachable, for links in messages |
+| `KUBITOR_HEARTBEAT_URL` | — | Pinged while alive, so silence is an alarm |
+| `KUBITOR_AGENT_WITNESS_URL` | — | On the agent: where to report the server unreachable |
 
 The agent takes `KUBITOR_SERVER_URL`, `KUBITOR_HOST_NAME` (the machine's name; `KUBITOR_NODE_NAME`
 still works) and either `KUBITOR_AGENT_TOKEN` or a projected token mounted at
@@ -203,10 +205,39 @@ Alerts screen rather than dropped in silence.
 The Telegram chat id is not discoverable from the token: message the bot once,
 then read `https://api.telegram.org/bot<token>/getUpdates`.
 
-> **kubitor cannot tell you that kubitor has stopped.** Nothing inside a cluster
-> can report the cluster being gone. Point a dead-man's switch — healthchecks.io,
-> Uptime Kuma, cron-job.org — at something that pings while kubitor is alive, and
-> let silence be the alarm.
+### When kubitor itself is the thing that stopped
+
+A server cannot report its own death, so two other things do.
+
+**The agents.** One runs on every node and talks to the server every second,
+which makes each of them the only process that knows when the server has gone
+quiet. Give them somewhere to shout and they will:
+
+```bash
+KUBITOR_AGENT_WITNESS_URL=https://hooks.example.com/kubitor-down
+KUBITOR_AGENT_WITNESS_AFTER_MS=300000     # five minutes, on purpose
+```
+
+Four nodes will send four messages, and **that is the design rather than a
+flaw**. Deduplicating needs shared state, the shared state is the server's
+database, and the server is what just became unreachable. Each message names
+the node that observed it, which makes the duplication informative: one node
+reporting means that node's network, and every node reporting means the server.
+
+Give this a narrow address — one that accepts this one shape of message —
+rather than the operator's Discord webhook. It goes on every machine.
+
+**A dead-man's switch**, for the case neither kubitor nor its agents survive:
+the site losing power, or its uplink.
+
+```bash
+KUBITOR_HEARTBEAT_URL=https://hc-ping.com/<uuid>
+```
+
+kubitor pings while it is alive and healthchecks.io, Uptime Kuma or cron-job.org
+raises the alarm when the pings stop. It is one request on a timer, deliberately:
+the outage it covers is total, and there is nothing cleverer to do about it from
+inside.
 
 ## Backups
 
