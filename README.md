@@ -309,6 +309,35 @@ Step 3 matters: if the migration in the backup is **newer** than the image you
 are restoring into, roll the image forward first. A restore discovered halfway
 through a migration is the worst version of this.
 
+## Who can do what
+
+Every account used to be equal, which was fine while kubitor only read a
+cluster and stopped being fine the moment there were screens that mint agent
+credentials and hold a bucket's keys.
+
+| | admin | operator | viewer |
+|---|---|---|---|
+| Every cluster screen, and every export | yes | yes | yes |
+| Alerts | yes | yes | yes |
+| Turning integrations on and off | yes | yes | — |
+| Agent credentials | yes | — | — |
+| Backups and their bucket | yes | — | — |
+| Accounts and roles | yes | — | — |
+
+The line that matters is between running the cluster and holding the
+credentials that would let somebody read the estate from outside it. An
+operator is trusted with the first.
+
+Existing accounts become `admin` on upgrade, so nothing changes until you
+narrow somebody deliberately. New accounts default to `viewer`: one created by
+accident should be able to do the least.
+
+**The menu is a courtesy; the routes are the control.** kubitor leaves out what
+your role cannot open, and every one of those routes checks again for itself —
+a URL and a session cookie get a `403`, whatever the menu showed. Demoting the
+last account that can manage accounts is refused, because an install where
+nobody can do that cannot be recovered from the dashboard at all.
+
 ## Security
 
 - Sessions are a JWT in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie carrying a session id

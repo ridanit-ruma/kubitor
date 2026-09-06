@@ -16,7 +16,7 @@ import { z } from 'zod';
 import type { AgentSummary, AgentsError, AgentsService } from '../auth/agents.service.js';
 import { AGENTS_SERVICE, KUBE_NODE_NAMES } from '../tokens.js';
 import { PasswordFreshGuard } from './password-fresh.guard.js';
-import { type AuthenticatedRequest, requireAuth } from './request-context.js';
+import { type AuthenticatedRequest, requireCapability } from './request-context.js';
 import { SessionGuard } from './session.guard.js';
 
 const stepUp = z.object({ currentPassword: z.string().min(1).max(512) });
@@ -57,7 +57,8 @@ export class AgentsController {
   }
 
   @Get()
-  async list(): Promise<{ agents: AgentSummary[] }> {
+  async list(@Req() request: AuthenticatedRequest): Promise<{ agents: AgentSummary[] }> {
+    requireCapability(request, 'agents.manage');
     return { agents: await this.#agents.list(await this.#nodeNames()) };
   }
 
@@ -68,7 +69,7 @@ export class AgentsController {
     @Body() body: unknown,
   ): Promise<{ name: string; token: string }> {
     const { name, currentPassword } = parse(issueBody, body);
-    const { account } = requireAuth(request);
+    const { account } = requireCapability(request, 'agents.manage');
 
     const result = await this.#agents.issue(account, currentPassword, name, Date.now());
     if (!result.ok) raise(result.error);
@@ -86,7 +87,7 @@ export class AgentsController {
     @Body() body: unknown,
   ): Promise<void> {
     const { currentPassword } = parse(stepUp, body);
-    const { account } = requireAuth(request);
+    const { account } = requireCapability(request, 'agents.manage');
 
     const result = await this.#agents.revoke(account, currentPassword, name);
     if (!result.ok) raise(result.error);

@@ -88,10 +88,16 @@ export const api = {
 
   accounts: () => request<{ accounts: AccountSummary[] }>('/api/accounts'),
 
-  createAccount: (username: string, currentPassword: string) =>
+  createAccount: (username: string, role: Role, currentPassword: string) =>
     request<{ account: AccountSummary; password: string }>('/api/accounts', {
       method: 'POST',
-      body: JSON.stringify({ username, currentPassword }),
+      body: JSON.stringify({ username, role, currentPassword }),
+    }),
+
+  setAccountRole: (id: string, role: Role, currentPassword: string) =>
+    request<{ account: AccountSummary }>(`/api/accounts/${encodeURIComponent(id)}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ role, currentPassword }),
     }),
 
   resetAccount: (id: string, currentPassword: string) =>
@@ -461,9 +467,19 @@ export interface HostSeriesPoint {
   netTxBytesPerSecond: number | null;
 }
 
+/**
+ * What an account may do.
+ *
+ * `viewer` reads the cluster. `operator` also changes what is installed on it.
+ * `admin` also reaches the credentials and the people — agent tokens, the
+ * backup bucket, and accounts.
+ */
+export type Role = 'admin' | 'operator' | 'viewer';
+
 export interface AccountSummary {
   id: string;
   username: string;
+  role: Role;
   mustChangePassword: boolean;
   createdAt: number;
 }

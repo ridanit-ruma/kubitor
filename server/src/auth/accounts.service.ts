@@ -3,15 +3,24 @@ import type { AccountEventsRepo } from '../db/account-events.repo.js';
 import type { Account, AccountsRepo } from '../db/accounts.repo.js';
 import type { SessionsRepo } from '../db/sessions.repo.js';
 import { hashPassword, verifyPassword } from './password.js';
+import { isRole, type Role, rolesWith } from './roles.js';
 
 export interface AccountSummary {
   id: string;
   username: string;
+  role: Role;
   mustChangePassword: boolean;
   createdAt: number;
 }
 
-export type AccountsError = 'reauthentication_failed' | 'username_taken' | 'not_found' | 'self';
+export type AccountsError =
+  | 'reauthentication_failed'
+  | 'username_taken'
+  | 'not_found'
+  | 'self'
+  | 'invalid_role'
+  /** Doing this would leave nobody able to manage accounts at all. */
+  | 'last_admin';
 
 export type AccountsResult<T> = { ok: true; value: T } | { ok: false; error: AccountsError };
 
@@ -51,11 +60,13 @@ export class AccountsService {
     actor: Account,
     actorPassword: string,
     username: string,
+    role: string,
     now: number,
   ): Promise<AccountsResult<{ account: AccountSummary; password: string }>> {
     if (!(await this.#reauthenticate(actor, actorPassword))) {
       return { ok: false, error: 'reauthentication_failed' };
     }
+    if (!isRole(role)) return { ok: false, error: 'invalid_role' };
 
     if (await this.#deps.accounts.byUsername(username)) {
       return { ok: false, error: 'username_taken' };
@@ -63,7 +74,7 @@ export class AccountsService {
 
     const password = generatePassword();
     const account = await this.#deps.accounts.create(
-      { username, passwordHash: await hashPassword(password), mustChangePassword: true },
+      { username, role, passwordHash: await hashPassword(password), mustChangePassword: true },
       now,
     );
 
@@ -142,6 +153,48 @@ export class AccountsService {
   }
 
   /**
+   * Changes what an account may do.
+   *
+   * Refuses to remove the last account that can manage accounts. An install
+   * where nobody can do that cannot be recovered from the dashboard at all,
+   * and whoever is about to cause it is one click from finding out.
+   */
+  async setRole(
+    actor: Account,
+    actorPassword: string,
+    id: string,
+    role: string,
+    now: number,
+  ): Promise<AccountsResult<AccountSummary>> {
+    if (!(await this.#reauthenticate(actor, actorPassword))) {
+      return { ok: false, error: 'reauthentication_failed' };
+    }
+    if (!isRole(role)) return { ok: false, error: 'invalid_role' };
+
+    const target = await this.#deps.accounts.byId(id);
+    if (!target) return { ok: false, error: 'not_found' };
+    if (target.role === role) return { ok: true, value: summarize(target) };
+
+    const managers: readonly string[] = rolesWith('accounts.manage');
+    const losingLast =
+      managers.includes(target.role) &&
+      !managers.includes(role) &&
+      (await this.#deps.accounts.countWithRole(managers)) <= 1;
+    if (losingLast) return { ok: false, error: 'last_admin' };
+
+    await this.#deps.accounts.setRole(id, role);
+    await this.#deps.events.record({
+      at: now,
+      actorId: actor.id,
+      action: 'set_role',
+      subject: target.username,
+      detail: { from: target.role, to: role },
+    });
+
+    return { ok: true, value: { ...summarize(target), role } };
+  }
+
+  /**
    * Creates the first account if the database has none. Never touches an
    * existing one, so a restart cannot reset a password that has been changed.
    *
@@ -159,7 +212,14 @@ export class AccountsService {
     const password = initialPassword ?? (generated as string);
 
     await this.#deps.accounts.create(
-      { username, passwordHash: await hashPassword(password), mustChangePassword: true },
+      {
+        username,
+        // The first account can manage everything, or there would be no way to
+        // grant anybody anything.
+        role: 'admin',
+        passwordHash: await hashPassword(password),
+        mustChangePassword: true,
+      },
       now,
     );
 
@@ -179,6 +239,7 @@ function summarize(account: Account): AccountSummary {
   return {
     id: account.id,
     username: account.username,
+    role: isRole(account.role) ? account.role : 'viewer',
     mustChangePassword: account.mustChangePassword,
     createdAt: account.createdAt,
   };

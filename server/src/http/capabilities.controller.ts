@@ -9,12 +9,14 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
 import type { CapabilitiesService } from '../plugins/capabilities.service.js';
 import { CAPABILITIES_SERVICE } from '../tokens.js';
 import { PasswordFreshGuard } from './password-fresh.guard.js';
+import { type AuthenticatedRequest, requireAuth, requireCapability } from './request-context.js';
 import { SessionGuard } from './session.guard.js';
 
 const overrideBody = z.object({
@@ -32,21 +34,30 @@ export class CapabilitiesController {
 
   /** What this cluster can show. The client builds its navigation from this. */
   @Get('capabilities')
-  async manifest(): Promise<CapabilityManifest> {
-    return this.#capabilities.manifest(Date.now());
+  async manifest(@Req() request: AuthenticatedRequest): Promise<CapabilityManifest> {
+    const { account } = requireAuth(request);
+    return this.#capabilities.manifest(Date.now(), account.role);
   }
 
   @Post('capabilities/rescan')
   @HttpCode(200)
-  async rescan(): Promise<CapabilityManifest> {
+  async rescan(@Req() request: AuthenticatedRequest): Promise<CapabilityManifest> {
+    const { account } = requireCapability(request, 'integrations.write');
+
     const now = Date.now();
     await this.#capabilities.rescan(now);
-    return this.#capabilities.manifest(now);
+    return this.#capabilities.manifest(now, account.role);
   }
 
   @Post('integrations/:id/override')
   @HttpCode(204)
-  async setOverride(@Param('id') id: string, @Body() body: unknown): Promise<void> {
+  async setOverride(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    requireCapability(request, 'integrations.write');
+
     const parsed = overrideBody.safeParse(body);
     if (!parsed.success) throw new BadRequestException({ error: 'invalid_body' });
 

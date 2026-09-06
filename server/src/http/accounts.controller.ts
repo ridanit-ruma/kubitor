@@ -17,12 +17,15 @@ import { z } from 'zod';
 import type { AccountSummary, AccountsError, AccountsService } from '../auth/accounts.service.js';
 import { ACCOUNTS_SERVICE } from '../tokens.js';
 import { PasswordFreshGuard } from './password-fresh.guard.js';
-import { type AuthenticatedRequest, requireAuth } from './request-context.js';
+import { type AuthenticatedRequest, requireAuth, requireCapability } from './request-context.js';
 import { SessionGuard } from './session.guard.js';
 
 const stepUp = z.object({ currentPassword: z.string().min(1).max(512) });
 
+const roleBody = stepUp.extend({ role: z.enum(['admin', 'operator', 'viewer']) });
+
 const createBody = stepUp.extend({
+  role: z.enum(['admin', 'operator', 'viewer']).default('viewer'),
   username: z
     .string()
     .min(1)
@@ -45,6 +48,10 @@ function raise(error: AccountsError): never {
       throw new ConflictException({ error });
     case 'not_found':
       throw new NotFoundException({ error });
+    case 'invalid_role':
+      throw new BadRequestException({ error });
+    case 'last_admin':
+      throw new ConflictException({ error });
     default:
       throw new ForbiddenException({ error });
   }
@@ -60,7 +67,8 @@ export class AccountsController {
   }
 
   @Get()
-  async list(): Promise<{ accounts: AccountSummary[] }> {
+  async list(@Req() request: AuthenticatedRequest): Promise<{ accounts: AccountSummary[] }> {
+    requireCapability(request, 'accounts.manage');
     return { accounts: await this.#accounts.list() };
   }
 
@@ -70,10 +78,16 @@ export class AccountsController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<{ account: AccountSummary; password: string }> {
-    const { username, currentPassword } = parse(createBody, body);
-    const { account } = requireAuth(request);
+    const { username, role, currentPassword } = parse(createBody, body);
+    const { account } = requireCapability(request, 'accounts.manage');
 
-    const result = await this.#accounts.create(account, currentPassword, username, Date.now());
+    const result = await this.#accounts.create(
+      account,
+      currentPassword,
+      username,
+      role,
+      Date.now(),
+    );
     if (!result.ok) raise(result.error);
 
     return result.value;
@@ -87,7 +101,7 @@ export class AccountsController {
     @Body() body: unknown,
   ): Promise<{ password: string }> {
     const { currentPassword } = parse(stepUp, body);
-    const { account } = requireAuth(request);
+    const { account } = requireCapability(request, 'accounts.manage');
 
     const result = await this.#accounts.resetPassword(account, currentPassword, id, Date.now());
     if (!result.ok) raise(result.error);
@@ -111,5 +125,21 @@ export class AccountsController {
 
     const result = await this.#accounts.delete(account, currentPassword, id, Date.now());
     if (!result.ok) raise(result.error);
+  }
+
+  @Post(':id/role')
+  @HttpCode(200)
+  async setRole(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ account: AccountSummary }> {
+    const { role, currentPassword } = parse(roleBody, body);
+    const { account } = requireCapability(request, 'accounts.manage');
+
+    const result = await this.#accounts.setRole(account, currentPassword, id, role, Date.now());
+    if (!result.ok) raise(result.error);
+
+    return { account: result.value };
   }
 }

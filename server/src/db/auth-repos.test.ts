@@ -19,7 +19,7 @@ describeEachDialect('AccountsRepo', (ctx) => {
 
   it('creates and finds an account by username and by id', async () => {
     const created = await repo.create(
-      { username: 'admin', passwordHash: 'scrypt$1', mustChangePassword: true },
+      { username: 'admin', role: 'admin', passwordHash: 'scrypt$1', mustChangePassword: true },
       NOW,
     );
 
@@ -35,16 +35,22 @@ describeEachDialect('AccountsRepo', (ctx) => {
   });
 
   it('refuses a duplicate username', async () => {
-    await repo.create({ username: 'dupe', passwordHash: 'h', mustChangePassword: false }, NOW);
+    await repo.create(
+      { username: 'dupe', role: 'admin', passwordHash: 'h', mustChangePassword: false },
+      NOW,
+    );
 
     await expect(
-      repo.create({ username: 'dupe', passwordHash: 'h', mustChangePassword: false }, NOW),
+      repo.create(
+        { username: 'dupe', role: 'admin', passwordHash: 'h', mustChangePassword: false },
+        NOW,
+      ),
     ).rejects.toThrow();
   });
 
   it('changes a password and clears the must-change flag', async () => {
     const account = await repo.create(
-      { username: 'rotate', passwordHash: 'old', mustChangePassword: true },
+      { username: 'rotate', role: 'admin', passwordHash: 'old', mustChangePassword: true },
       NOW,
     );
 
@@ -64,7 +70,7 @@ describeEachDialect('AccountsRepo', (ctx) => {
 
   it('deletes an account', async () => {
     const account = await repo.create(
-      { username: 'temp', passwordHash: 'h', mustChangePassword: false },
+      { username: 'temp', role: 'admin', passwordHash: 'h', mustChangePassword: false },
       NOW,
     );
 
@@ -84,7 +90,10 @@ describeEachDialect('SessionsRepo', (ctx) => {
     accounts = new AccountsRepo(ctx.db);
     sessions = new SessionsRepo(ctx.db);
     accountId = (
-      await accounts.create({ username: 's', passwordHash: 'h', mustChangePassword: false }, NOW)
+      await accounts.create(
+        { username: 's', role: 'admin', passwordHash: 'h', mustChangePassword: false },
+        NOW,
+      )
     ).id;
   });
 

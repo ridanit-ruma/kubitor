@@ -16,7 +16,7 @@ import { verifyPassword } from '../auth/password.js';
 import type { BackupRunner } from '../backup/runner.js';
 import { BACKUP_RUNNER } from '../tokens.js';
 import { PasswordFreshGuard } from './password-fresh.guard.js';
-import { type AuthenticatedRequest, requireAuth } from './request-context.js';
+import { type AuthenticatedRequest, requireCapability } from './request-context.js';
 import { SessionGuard } from './session.guard.js';
 
 const stepUp = z.object({ currentPassword: z.string().min(1).max(512) });
@@ -38,7 +38,8 @@ export class BackupsController {
    * are not, because nothing on this screen needs them.
    */
   @Get()
-  async list(): Promise<unknown> {
+  async list(@Req() request: AuthenticatedRequest): Promise<unknown> {
+    requireCapability(request, 'backups.manage');
     if (!this.#runner) return { configured: false, backups: [] };
     return this.#runner.status();
   }
@@ -49,7 +50,7 @@ export class BackupsController {
     const parsed = stepUp.safeParse(body);
     if (!parsed.success) throw new BadRequestException({ error: 'invalid_body' });
 
-    const { account } = requireAuth(request);
+    const { account } = requireCapability(request, 'backups.manage');
     if (!(await verifyPassword(parsed.data.currentPassword, account.passwordHash))) {
       throw new ForbiddenException({ error: 'reauthentication_failed' });
     }

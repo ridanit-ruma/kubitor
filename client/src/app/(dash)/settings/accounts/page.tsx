@@ -17,6 +17,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -24,13 +31,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { type AccountSummary, ApiError, api } from '@/lib/api';
+import { type AccountSummary, ApiError, api, type Role } from '@/lib/api';
 import { formatTimestamp } from '@/lib/format';
 
 type Pending =
   | { kind: 'create' }
   | { kind: 'reset'; account: AccountSummary }
-  | { kind: 'delete'; account: AccountSummary };
+  | { kind: 'delete'; account: AccountSummary }
+  | { kind: 'role'; account: AccountSummary; role: Role };
+
+/** What each role reaches, in the words an operator would use. */
+const ROLE_MEANS: Record<Role, string> = {
+  admin: 'everything, including credentials and accounts',
+  operator: 'the cluster, and what is installed on it',
+  viewer: 'the cluster, read-only',
+};
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
@@ -66,6 +81,14 @@ export default function AccountsPage() {
         mint a way in. Keep a second account: losing the only one means losing the dashboard.
       </p>
 
+      <ul className="max-w-2xl space-y-1 text-sm text-muted-foreground">
+        {(['admin', 'operator', 'viewer'] as const).map((role) => (
+          <li key={role}>
+            <span className="font-mono text-xs">{role}</span> — {ROLE_MEANS[role]}
+          </li>
+        ))}
+      </ul>
+
       <div className="pane rounded-lg border border-line">
         <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
@@ -73,7 +96,10 @@ export default function AccountsPage() {
               <TableHead className="truncate font-mono text-[11px] uppercase tracking-[0.1em]">
                 Username
               </TableHead>
-              <TableHead className="w-[34%] truncate font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[22%]">
+              <TableHead className="w-[26%] truncate font-mono text-[11px] uppercase tracking-[0.1em] sm:w-[18%]">
+                Role
+              </TableHead>
+              <TableHead className="hidden w-[18%] truncate font-mono text-[11px] uppercase tracking-[0.1em] sm:table-cell">
                 State
               </TableHead>
               <TableHead className="hidden w-[22%] truncate font-mono text-[11px] uppercase tracking-[0.1em] md:table-cell">
@@ -88,7 +114,26 @@ export default function AccountsPage() {
             {accounts.map((account) => (
               <TableRow key={account.id}>
                 <TableCell className="max-w-0 truncate font-medium">{account.username}</TableCell>
-                <TableCell className="max-w-0 truncate">
+                <TableCell className="max-w-0">
+                  <Select
+                    value={account.role}
+                    onValueChange={(role) =>
+                      setPending({ kind: 'role', account, role: role as Role })
+                    }
+                  >
+                    <SelectTrigger className="h-7 w-full" size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(['admin', 'operator', 'viewer'] as const).map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="hidden max-w-0 truncate sm:table-cell">
                   {account.mustChangePassword ? (
                     <Badge variant="outline" className="border-blind text-blind">
                       Password not set
@@ -170,6 +215,9 @@ function StepUpDialog({
   onDone(result: { username: string; password: string } | null): Promise<void>;
 }) {
   const [username, setUsername] = useState('');
+  // The narrowest role, on purpose: an account created by accident should be
+  // able to do the least.
+  const [role, setRole] = useState<Role>('viewer');
   const [currentPassword, setCurrentPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -178,10 +226,12 @@ function StepUpDialog({
   // without an effect that has to remember to clear them.
   if (!pending) return null;
 
+  const named = pending.kind === 'create' ? '' : pending.account.username;
   const titles = {
     create: 'Add an account',
-    reset: `Reset ${pending.kind === 'create' ? '' : pending.account.username}`,
-    delete: `Delete ${pending.kind === 'create' ? '' : pending.account.username}`,
+    reset: `Reset ${named}`,
+    delete: `Delete ${named}`,
+    role: pending.kind === 'role' ? `Make ${named} ${pending.role}` : 'Change role',
   } as const;
 
   const submit = async (event: React.FormEvent): Promise<void> => {
@@ -191,11 +241,15 @@ function StepUpDialog({
 
     try {
       if (pending.kind === 'create') {
-        const created = await api.createAccount(username, currentPassword);
+        const created = await api.createAccount(username, role, currentPassword);
         await onDone({ username: created.account.username, password: created.password });
       } else if (pending.kind === 'reset') {
         const reset = await api.resetAccount(pending.account.id, currentPassword);
         await onDone({ username: pending.account.username, password: reset.password });
+      } else if (pending.kind === 'role') {
+        await api.setAccountRole(pending.account.id, pending.role, currentPassword);
+        toast.success(`${pending.account.username} is now ${pending.role}.`);
+        await onDone(null);
       } else {
         await api.deleteAccount(pending.account.id, currentPassword);
         toast.success(`Deleted ${pending.account.username}.`);
@@ -218,6 +272,7 @@ function StepUpDialog({
               {pending.kind === 'delete' && 'This cannot be undone.'}
               {pending.kind === 'create' &&
                 'kubitor generates the first password and shows it once.'}
+              {pending.kind === 'role' && ROLE_MEANS[pending.role]}
             </DialogDescription>
           </DialogHeader>
 
@@ -235,6 +290,21 @@ function StepUpDialog({
               <p className="text-xs text-muted-foreground">
                 Lowercase letters, digits, dot, dash or underscore.
               </p>
+
+              <Label htmlFor="new-role">Role</Label>
+              <Select value={role} onValueChange={(next) => setRole(next as Role)}>
+                <SelectTrigger id="new-role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(['viewer', 'operator', 'admin'] as const).map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{ROLE_MEANS[role]}</p>
             </div>
           )}
 
@@ -285,7 +355,10 @@ function messageFor(error: unknown): string {
     case 'self':
       return 'You cannot delete the account you are signed in as.';
     case 'invalid_body':
-      return 'That username is not allowed.';
+    case 'invalid_role':
+      return 'That is not allowed.';
+    case 'last_admin':
+      return 'This is the only account that can manage accounts. Promote another one first.';
     default:
       return 'That did not work.';
   }

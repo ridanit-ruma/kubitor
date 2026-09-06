@@ -52,7 +52,12 @@ describeEachDialect('AuthService', (ctx) => {
 
     password = 'a-good-password';
     await accounts.create(
-      { username: 'admin', passwordHash: await hashPassword(password), mustChangePassword: true },
+      {
+        username: 'admin',
+        role: 'admin',
+        passwordHash: await hashPassword(password),
+        mustChangePassword: true,
+      },
       NOW,
     );
   });

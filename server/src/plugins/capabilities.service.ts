@@ -1,4 +1,5 @@
 import type { CapabilityManifest, IntegrationOverride, NavEntry } from '@kubitor/shared';
+import { type Capability, can } from '../auth/roles.js';
 import type { IntegrationStateRepo } from '../db/integration-state.repo.js';
 import type { DetectionService } from './detection.service.js';
 import { buildManifest } from './manifest.js';
@@ -71,6 +72,21 @@ export const CORE_NAV: readonly NavEntry[] = [
 ];
 
 /**
+ * What a screen needs before it is worth offering.
+ *
+ * Kept beside the navigation rather than inside it so the shared `NavEntry`
+ * type stays about screens, and so this list is the one place to read when
+ * asking which roles see what. Screens absent from it are cluster screens,
+ * which every role may see.
+ */
+const NAV_REQUIRES: Record<string, Capability> = {
+  integrations: 'integrations.write',
+  accounts: 'accounts.manage',
+  agents: 'agents.manage',
+  backups: 'backups.manage',
+};
+
+/**
  * The Hosts screen, mounted only where a machine is not a cluster node.
  *
  * With agents on nodes alone it would list exactly what Nodes lists, and a
@@ -109,7 +125,15 @@ export class CapabilitiesService {
     this.#deps = deps;
   }
 
-  async manifest(now: number): Promise<CapabilityManifest> {
+  /**
+   * The manifest as one role sees it.
+   *
+   * Filtering here gives per-role navigation with no client change, because the
+   * client already builds its menu from what this returns. It is a courtesy,
+   * not a control: every route the hidden screens call checks the capability
+   * again for itself.
+   */
+  async manifest(now: number, role?: string): Promise<CapabilityManifest> {
     const [states, cluster, agent] = await Promise.all([
       this.#deps.states.list(),
       this.#deps.clusterFacts(),
@@ -122,7 +146,7 @@ export class CapabilitiesService {
       agent,
       cluster,
       kubitor: { version: this.#deps.version },
-      coreNav: agent.standalone > 0 ? [...CORE_NAV, HOSTS_NAV] : CORE_NAV,
+      coreNav: visibleTo(agent.standalone > 0 ? [...CORE_NAV, HOSTS_NAV] : CORE_NAV, role),
       generatedAt: now,
     });
   }
@@ -135,4 +159,14 @@ export class CapabilitiesService {
   async rescan(now: number): Promise<void> {
     await this.#deps.detection.runOnce(now);
   }
+}
+
+/** The entries a role may open; everything else is left out of its menu. */
+function visibleTo(entries: readonly NavEntry[], role: string | undefined): NavEntry[] {
+  if (role === undefined) return [...entries];
+
+  return entries.filter((entry) => {
+    const required = NAV_REQUIRES[entry.id];
+    return required === undefined || can(role, required);
+  });
 }

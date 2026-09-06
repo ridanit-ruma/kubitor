@@ -202,9 +202,10 @@ export async function seedAccount(
   harness: TestApp,
   username: string,
   mustChangePassword = false,
+  role = 'admin',
 ): Promise<void> {
   await harness.accounts.create(
-    { username, passwordHash: await hashPassword(TEST_PASSWORD), mustChangePassword },
+    { username, role, passwordHash: await hashPassword(TEST_PASSWORD), mustChangePassword },
     Date.now(),
   );
 }

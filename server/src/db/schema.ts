@@ -19,6 +19,8 @@ export interface SettingsTable {
 export interface AccountsTable {
   id: string;
   username: string;
+  /** `admin`, `operator` or `viewer`. */
+  role: string;
   password_hash: string;
   /** 0 or 1. */
   must_change_password: number;
@@ -49,7 +51,8 @@ export type AccountAction =
   | 'change_password'
   | 'create'
   | 'reset_password'
-  | 'delete';
+  | 'delete'
+  | 'set_role';
 
 export interface AccountEventsTable {
   at: number;
