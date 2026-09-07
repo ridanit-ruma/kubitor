@@ -47,6 +47,14 @@ const SA_TOKEN_PATH = process.env.KUBITOR_SA_TOKEN_PATH ?? '/var/run/secrets/kub
 const SESSION_MODE = sessionModeFrom(process.env.KUBITOR_AGENT_SESSIONS);
 /** `/var/log/auth.log` on Debian, `/var/log/secure` on RHEL. */
 const AUTH_LOG = process.env.KUBITOR_AGENT_AUTH_LOG ?? null;
+/**
+ * auditd's log, where it is installed and this agent can read it.
+ *
+ * Complete where the sampler is a guess. Root-only, so this is reachable from
+ * a systemd unit and not from a pod running as `nobody` — its absence is the
+ * normal case and never an error.
+ */
+const AUDIT_LOG = process.env.KUBITOR_AGENT_AUDIT_LOG ?? null;
 /** How often sessions are looked at. They change on a human timescale. */
 const SESSION_INTERVAL_MS = Number(process.env.KUBITOR_AGENT_SESSION_INTERVAL_MS ?? 15_000);
 
@@ -94,6 +102,7 @@ async function main(): Promise<void> {
     node,
     mode: SESSION_MODE,
     authLogPath: AUTH_LOG,
+    auditLogPath: AUDIT_LOG,
     commOnly: process.env.KUBITOR_AGENT_COMMANDS_COMM_ONLY === 'true',
   });
 

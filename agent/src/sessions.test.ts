@@ -48,7 +48,14 @@ describe('readSessions', () => {
 
     expect(reading.problem).toBeNull();
     expect(reading.sessions).toEqual([
-      { user: 'ruma', tty: 'pts/0', kind: 'shell', pid: 91572, since: BOOT * 1000 + 5000 },
+      {
+        user: 'ruma',
+        tty: 'pts/0',
+        kind: 'shell',
+        pid: 91572,
+        since: BOOT * 1000 + 5000,
+        auditSession: null,
+      },
     ]);
   });
 
@@ -78,6 +85,26 @@ describe('readSessions', () => {
     const [session] = (await readSessions(root)).sessions;
 
     expect(session).toMatchObject({ user: 'deploy', tty: null, kind: 'exec' });
+  });
+
+  /**
+   * auditd records the login session, not the sshd pid, so this is the only
+   * thing that can tie an audited command to the session it was typed in.
+   */
+  it('reads the login session id where the machine keeps one', async () => {
+    crowd();
+    process_(91572, 'sshd: ruma@pts/0');
+    writeFileSync(join(root, '91572', 'sessionid'), '3\n');
+
+    expect((await readSessions(root)).sessions[0]?.auditSession).toBe(3);
+  });
+
+  it('reads the unset sentinel as no login session', async () => {
+    crowd();
+    process_(91572, 'sshd: ruma@pts/0');
+    writeFileSync(join(root, '91572', 'sessionid'), '4294967295\n');
+
+    expect((await readSessions(root)).sessions[0]?.auditSession).toBeNull();
   });
 
   it('reads the newer split daemon too', async () => {

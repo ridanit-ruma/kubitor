@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parseAuditLines } from './auditd.js';
 import { CommandDiff, readSessionCommands } from './commands.js';
+import { redactArgv } from './redact.js';
 import { readSessions, type SessionsProblem } from './sessions.js';
 import { type AccessAttempt, parseSshdLine } from './sshd-log.js';
 
@@ -36,7 +38,7 @@ export interface CommandRow extends Record<string, unknown> {
   pid: number;
   comm: string;
   argv: string;
-  source: 'sampled';
+  source: 'sampled' | 'audit';
 }
 
 export interface SessionRow extends Record<string, unknown> {
@@ -48,6 +50,8 @@ export interface SessionRow extends Record<string, unknown> {
   pid: number;
   since: number;
   from_ip: string | null;
+  /** The kernel's login session, which is how an audited command finds this row. */
+  audit_session: number | null;
 }
 
 export interface CollectorOptions {
@@ -65,14 +69,24 @@ export interface CollectorOptions {
   procRoot?: string;
   /** Record the program only, never its arguments. */
   commOnly?: boolean;
+  /**
+   * auditd's log, where it is installed and readable.
+   *
+   * Complete where the sampler is not: every `execve`, none missed. It is a
+   * separate thing to install and configure, so its absence is the normal case
+   * and never an error.
+   */
+  auditLogPath?: string | null;
   now?(): number;
 }
 
 export interface SessionCollection {
   access: AccessRow[];
   sessions: SessionRow[];
-  /** Empty unless the mode is `full`. Sampled, and every row says so. */
+  /** Empty unless the mode is `full`. Every row says whether it was sampled. */
   commands: CommandRow[];
+  /** Whether auditd supplied them, which is the difference between complete and not. */
+  commandsComplete: boolean;
   /** Why the sessions list may be empty for reasons other than nobody being on. */
   sessionsProblem: SessionsProblem | null;
   /** Whether attempts could be read at all. */
@@ -92,6 +106,7 @@ export class SessionCollector {
   readonly #commands = new CommandDiff();
   /** How far into the log this agent has already read. */
   #logOffset: number | null = null;
+  #auditOffset: number | null = null;
 
   constructor(options: CollectorOptions) {
     this.#options = options;
@@ -108,6 +123,7 @@ export class SessionCollector {
         access: [],
         sessions: [],
         commands: [],
+        commandsComplete: false,
         sessionsProblem: null,
         accessAvailable: false,
       };
@@ -115,13 +131,75 @@ export class SessionCollector {
 
     const [access, sessions] = await Promise.all([this.#readAccess(), this.#readSessions()]);
 
+    const commands = await this.#readCommands(sessions.rows);
+
     return {
       access: access.rows,
       accessAvailable: access.available,
       sessions: sessions.rows,
       sessionsProblem: sessions.problem,
-      commands: await this.#readCommands(sessions.rows),
+      commands: commands.rows,
+      commandsComplete: commands.complete,
     };
+  }
+
+  /**
+   * Every execution auditd recorded since the last read, for these sessions.
+   *
+   * Matched by the kernel's login session id rather than by pid, because that
+   * is what auditd records — an audited command knows which login it belongs to
+   * and not which sshd process served it.
+   */
+  async #readAudit(
+    sessions: readonly SessionRow[],
+  ): Promise<{ rows: CommandRow[]; available: boolean }> {
+    const path = this.#options.auditLogPath ?? null;
+    if (path === null) return { rows: [], available: false };
+
+    let text: string;
+    try {
+      text = await readFile(path, 'utf8');
+    } catch {
+      // Present in configuration and unreadable in practice — auditd's log is
+      // root-only, so an agent running as `nobody` lands here. Not an error;
+      // the sampler covers it and the screen says which it is looking at.
+      return { rows: [], available: false };
+    }
+
+    const size = Buffer.byteLength(text);
+    if (this.#auditOffset === null || size < this.#auditOffset) {
+      this.#auditOffset = size;
+      return { rows: [], available: true };
+    }
+
+    const fresh = text.slice(this.#auditOffset);
+    this.#auditOffset = size;
+
+    const bySession = new Map<number, SessionRow>();
+    for (const session of sessions) {
+      const id = session.audit_session;
+      if (typeof id === 'number') bySession.set(id, session);
+    }
+
+    const rows: CommandRow[] = [];
+    for (const command of parseAuditLines(fresh.split('\n'))) {
+      if (command.auditSession === null) continue;
+      const session = bySession.get(command.auditSession);
+      if (!session) continue;
+
+      rows.push({
+        at: command.at,
+        node: this.#options.node,
+        session_pid: session.pid,
+        user: session.user,
+        pid: command.pid,
+        comm: command.comm,
+        argv: this.#options.commOnly ? '' : redactArgv(command.argv).join(' '),
+        source: 'audit',
+      });
+    }
+
+    return { rows, available: true };
   }
 
   /**
@@ -131,8 +209,18 @@ export class SessionCollector {
    * "who is on the machine" and "what they are typing" are different things to
    * agree to, and the second should not arrive as a side effect of the first.
    */
-  async #readCommands(sessions: readonly SessionRow[]): Promise<CommandRow[]> {
-    if (this.#options.mode !== 'full' || sessions.length === 0) return [];
+  async #readCommands(
+    sessions: readonly SessionRow[],
+  ): Promise<{ rows: CommandRow[]; complete: boolean }> {
+    if (this.#options.mode !== 'full' || sessions.length === 0) {
+      return { rows: [], complete: false };
+    }
+
+    // auditd where it exists, and the sampler only where it does not. Running
+    // both would report the same execution twice, once complete and once as a
+    // guess, which is worse than either alone.
+    const audited = await this.#readAudit(sessions);
+    if (audited.available) return { rows: audited.rows, complete: true };
 
     const root = this.#options.procRoot ?? '/proc';
     const bootMs = await bootTimeMs(root);
@@ -149,16 +237,19 @@ export class SessionCollector {
     const owner = new Map(sessions.map((session) => [session.pid, session.user]));
     const at = this.#now();
 
-    return this.#commands.next(running).map((command) => ({
-      at,
-      node: this.#options.node,
-      session_pid: command.sessionPid,
-      user: owner.get(command.sessionPid) ?? '',
-      pid: command.pid,
-      comm: command.comm,
-      argv: command.argv.join(' '),
-      source: 'sampled' as const,
-    }));
+    return {
+      complete: false,
+      rows: this.#commands.next(running).map((command) => ({
+        at,
+        node: this.#options.node,
+        session_pid: command.sessionPid,
+        user: owner.get(command.sessionPid) ?? '',
+        pid: command.pid,
+        comm: command.comm,
+        argv: command.argv.join(' '),
+        source: 'sampled' as const,
+      })),
+    };
   }
 
   async #readSessions(): Promise<{ rows: SessionRow[]; problem: SessionsProblem | null }> {
@@ -178,6 +269,7 @@ export class SessionCollector {
         // environment, and the agent can read neither as `nobody`. Saying null
         // is honest; inventing one would not be.
         from_ip: null,
+        audit_session: session.auditSession,
       })),
       problem: reading.problem,
     };

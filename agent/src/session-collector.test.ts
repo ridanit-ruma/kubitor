@@ -52,11 +52,16 @@ function child(pid: number, ppid: number, comm: string, cmdline: string[] = [com
   writeFileSync(join(dir, 'stat'), `${pid} (${comm}) S ${afterState.join(' ')}`);
 }
 
-function collector(mode: 'off' | 'access' | 'full' = 'full', withLog = true) {
+function collector(
+  mode: 'off' | 'access' | 'full' = 'full',
+  withLog = true,
+  auditLogPath: string | null = null,
+) {
   return new SessionCollector({
     node: 'ken',
     mode,
     authLogPath: withLog ? logPath : null,
+    auditLogPath,
     procRoot,
     now: () => NOW,
   });
@@ -84,6 +89,7 @@ describe('SessionCollector', () => {
       access: [],
       sessions: [],
       commands: [],
+      commandsComplete: false,
       sessionsProblem: null,
       accessAvailable: false,
     });
@@ -104,6 +110,7 @@ describe('SessionCollector', () => {
         pid: 500,
         since: BOOT * 1000 + 10_000,
         from_ip: null,
+        audit_session: null,
       },
     ]);
   });
@@ -231,5 +238,92 @@ describe('SessionCollector', () => {
     });
 
     expect((await alone.collect()).sessionsProblem).toBe('unreadable');
+  });
+
+  describe('with auditd', () => {
+    const auditLine = (id: string, ses: number, pid: number, argv: string[]) => [
+      `type=SYSCALL msg=audit(${id}): arch=c000003e syscall=59 success=yes ` +
+        `pid=${pid} auid=1000 ses=${ses} comm="${argv[0]}"`,
+      `type=EXECVE msg=audit(${id}): argc=${argv.length} ${argv
+        .map((arg, index) => `a${index}="${arg}"`)
+        .join(' ')}`,
+    ];
+
+    /** auditd appends; so does this. */
+    function auditLog(): string {
+      const path = join(root, 'audit.log');
+      writeFileSync(path, '');
+      return path;
+    }
+
+    function append(path: string, lines: string[]): void {
+      appendFileSync(path, `${lines.join('\n')}\n`);
+    }
+
+    /**
+     * Running both would report the same execution twice, once complete and
+     * once as a guess, which is worse than either alone.
+     */
+    it('uses auditd instead of the sampler, and says the result is complete', async () => {
+      sshd(500, 'sshd: ruma@pts/0');
+      writeFileSync(join(procRoot, '500', 'sessionid'), '7\n');
+      child(501, 500, 'bash');
+
+      const path = auditLog();
+      const reading = collector('full', true, path);
+      await reading.collect();
+
+      writeFileSync(
+        path,
+        `${auditLine('1.100:1', 7, 900, ['kubectl', 'get', 'pods']).join('\n')}\n`,
+      );
+      const collection = await reading.collect();
+
+      expect(collection.commandsComplete).toBe(true);
+      expect(collection.commands.map((c) => c.source)).toEqual(['audit']);
+      expect(collection.commands[0]?.argv).toBe('kubectl get pods');
+      expect(collection.commands[0]?.session_pid).toBe(500);
+    });
+
+    /** Matched by the login session id, because that is what auditd records. */
+    it('drops an audited command belonging to no session here', async () => {
+      sshd(500, 'sshd: ruma@pts/0');
+      writeFileSync(join(procRoot, '500', 'sessionid'), '7\n');
+
+      const path = auditLog();
+      const reading = collector('full', true, path);
+      await reading.collect();
+
+      append(path, auditLine('1.100:1', 99, 900, ['cron']));
+
+      expect((await reading.collect()).commands).toEqual([]);
+    });
+
+    it('redacts audited arguments too', async () => {
+      sshd(500, 'sshd: ruma@pts/0');
+      writeFileSync(join(procRoot, '500', 'sessionid'), '7\n');
+
+      const path = auditLog();
+      const reading = collector('full', true, path);
+      await reading.collect();
+
+      append(path, auditLine('1.100:1', 7, 900, ['mysql', '--password=hunter2']));
+
+      expect((await reading.collect()).commands[0]?.argv).not.toContain('hunter2');
+    });
+
+    /**
+     * auditd's log is root-only, so an agent running as `nobody` cannot read
+     * it. That is the normal case, not an error: the sampler covers it.
+     */
+    it('falls back to sampling when the audit log cannot be read', async () => {
+      sshd(500, 'sshd: ruma@pts/0');
+      child(501, 500, 'bash');
+
+      const collection = await collector('full', true, join(root, 'nowhere.log')).collect();
+
+      expect(collection.commandsComplete).toBe(false);
+      expect(collection.commands.map((c) => c.source)).toEqual(['sampled']);
+    });
   });
 });

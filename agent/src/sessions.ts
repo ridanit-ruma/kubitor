@@ -26,6 +26,14 @@ export interface HostSession {
   pid: number;
   /** Epoch milliseconds, derived from the kernel's boot time. */
   since: number;
+  /**
+   * The kernel's login session id, where the machine keeps one.
+   *
+   * auditd records this and not the sshd pid, so it is the only thing that can
+   * tie an audited command to the session it was typed in. Null on a machine
+   * without the audit subsystem, which is most of them.
+   */
+  auditSession: number | null;
 }
 
 /** Why sessions could not be read, when they could not. */
@@ -91,6 +99,7 @@ export async function readSessions(root = '/proc'): Promise<SessionsReading> {
       kind: kindOf(tty),
       pid: Number(pid),
       since,
+      auditSession: await auditSessionOf(join(root, pid, 'sessionid')),
     });
   }
 
@@ -160,4 +169,14 @@ async function startedAt(path: string, bootMs: number | null): Promise<number | 
   // 100 Hz is USER_HZ on every Linux this runs on; it is a compile-time
   // constant of the kernel, not something /proc reports.
   return bootMs + (ticks / 100) * 1000;
+}
+
+/** The kernel's login session id for a process, where the machine keeps one. */
+async function auditSessionOf(path: string): Promise<number | null> {
+  const raw = await read(path);
+  if (raw === null) return null;
+
+  const value = Number(raw.trim());
+  // The same unset sentinel auditd writes, for a process with no login behind it.
+  return Number.isFinite(value) && value !== 4_294_967_295 ? value : null;
 }

@@ -163,6 +163,7 @@ by construction.
 | `KUBITOR_AGENT_WITNESS_URL` | — | On the agent: where to report the server unreachable |
 | `KUBITOR_AGENT_SESSIONS` | `off` | `access` or `full`; who is logged in, and what they ran |
 | `KUBITOR_AGENT_COMMANDS_COMM_ONLY` | `false` | Record the program, never its arguments |
+| `KUBITOR_AGENT_AUDIT_LOG` | — | auditd's log, for complete records instead of a sample |
 
 The agent takes `KUBITOR_SERVER_URL`, `KUBITOR_HOST_NAME` (the machine's name; `KUBITOR_NODE_NAME`
 still works) and either `KUBITOR_AGENT_TOKEN` or a projected token mounted at
@@ -357,6 +358,24 @@ body, a log line and another machine's memory. `--password=`, `-pSECRET`,
 long key-shaped strings are all replaced. Set
 `KUBITOR_AGENT_COMMANDS_COMM_ONLY=true` to record the program and never its
 arguments, for anybody who would rather not rely on a pattern list.
+
+With **auditd** installed, the same screen gets complete records instead —
+every `execve`, none missed — and says `audit` rather than `sampled`. It needs
+a rule, and the agent has to be able to read the log, which is root-only:
+
+```bash
+# in /etc/audit/rules.d/kubitor.rules
+-a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k kubitor
+```
+
+```bash
+KUBITOR_AGENT_AUDIT_LOG=/var/log/audit/audit.log
+```
+
+Where auditd answers, the sampler stops: running both would report the same
+execution twice, once complete and once as a guess, which is worse than either
+alone. Audited commands are matched to a session by the kernel's login session
+id, because that is what auditd records.
 
 Kept for **48 hours**, unlike everything else here. The operational value of
 "what did somebody run" decays within a day; the liability of keeping it does

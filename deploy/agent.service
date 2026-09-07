@@ -29,6 +29,13 @@
 #
 #   KUBITOR_AGENT_SESSIONS=access
 #   KUBITOR_AGENT_AUTH_LOG=/var/log/auth.log
+#
+# With auditd installed, complete command records instead of a sample. Add the
+# rule first, or there is nothing in the log to read:
+#
+#   -a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k kubitor
+#
+#   KUBITOR_AGENT_AUDIT_LOG=/var/log/audit/audit.log
 
 [Unit]
 Description=kubitor host agent
