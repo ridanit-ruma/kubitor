@@ -76,3 +76,22 @@ patches:
   #     - op: replace
   #       path: /spec/ingress/0/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
   #       value: ingress-nginx
+
+  # Who is logged into the machines. Off unless you add this, and it costs the
+  # agent's `hostPID: false` — which lets the pod see every process on the host.
+  # PodSecurity `restricted` forbids it, so add it on purpose or not at all.
+  #
+  # Inline rather than `path: ../../deploy/agent-sessions.yaml`: kustomize
+  # refuses to read a patch from outside the overlay's own directory. That file
+  # is the annotated copy of what follows.
+  #
+  # Login *attempts* need sshd's log and are not readable from inside a pod at
+  # all; run the agent as a systemd unit on a machine where you want those.
+  # - target: { kind: DaemonSet, name: kubitor-agent }
+  #   patch: |-
+  #     - op: add
+  #       path: /spec/template/spec/hostPID
+  #       value: true
+  #     - op: add
+  #       path: /spec/template/spec/containers/0/env/-
+  #       value: { name: KUBITOR_AGENT_SESSIONS, value: access }

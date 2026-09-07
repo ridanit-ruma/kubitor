@@ -1,0 +1,46 @@
+# Session monitoring, as an opt-in patch on the agent DaemonSet.
+#
+# Deliberately not part of `deploy/`. The default agent runs as uid 65534 with
+# every capability dropped, and that property is worth keeping: this patch gives
+# up part of it, and giving it up should be a thing somebody did on purpose.
+#
+# `hostPID: true` lets the agent see the host's processes, which is what reading
+# who is logged in requires — and also means the pod can see every process on
+# the machine. PodSecurity `restricted` forbids it. It is a real privilege, and
+# the reason it is the only thing this patch adds: the agent still runs as
+# `nobody`, still drops every capability, and still writes nothing anywhere.
+#
+# Copy it into your own overlay as an inline patch. kustomize will not read a
+# patch file from outside the overlay's directory, so pointing `path:` at this
+# file fails with a "not in or below" error — see examples/overlay, which
+# carries the same patch inline and commented out:
+#
+#   patches:
+#     - target: { kind: DaemonSet, name: kubitor-agent }
+#       patch: |-
+#         - op: add
+#           path: /spec/template/spec/hostPID
+#           value: true
+#
+# Then choose what it collects. `access` is who is connected; `full` also
+# samples what runs inside those sessions. Neither reads anything until set.
+#
+#   KUBITOR_AGENT_SESSIONS=access
+#
+# Login *attempts* are not readable from inside a pod at all: they live in
+# sshd's log, this image has no `journalctl`, and a host that logs only to the
+# journal has nothing here to read. Run the agent as a systemd unit on such a
+# machine — see deploy/agent.service.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubitor-agent
+spec:
+  template:
+    spec:
+      hostPID: true
+      containers:
+        - name: agent
+          env:
+            - name: KUBITOR_AGENT_SESSIONS
+              value: access

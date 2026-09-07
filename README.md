@@ -328,7 +328,12 @@ KUBITOR_AGENT_AUTH_LOG=/var/log/auth.log     # /var/log/secure on RHEL
 process title, and that, the login uid and the start time are all world-readable
 — so the agent reads them as `nobody` with every capability dropped. It needs to
 see the host's processes, which means `hostPID: true` on the DaemonSet and
-nothing more. That is a real privilege and not the default; add it deliberately.
+nothing more.
+
+That is a real privilege: it lets the pod see every process on the machine, and
+PodSecurity `restricted` forbids it. So it is a patch you add on purpose rather
+than part of the default install — `deploy/agent-sessions.yaml`, wired up in
+`examples/overlay/kustomization.yaml`.
 
 **Who tried** is read from sshd's log, because sshd offers no other way to know:
 there is no socket, no file and no API that reports authentication attempts.
