@@ -20,6 +20,8 @@ import { AGENT_TOKENS, HOST_INGEST, INGEST_PIPELINE, SA_VERIFIER } from '../toke
 /** Facets an agent is allowed to write. Nothing else is reachable by a token. */
 const AGENT_FACETS: Record<string, string> = {
   hardware: 'host.hardware',
+  access: 'host.access',
+  sessions: 'host.sessions',
 };
 
 const body = z.object({
@@ -102,7 +104,13 @@ export class IngestController {
     // another node is rewritten, so one compromised agent cannot forge the fleet.
     const rows = parsed.data.rows.map((row) => ({ ...row, node }));
 
-    const report = await this.#pipeline.ingest('host-agent', facet, rows, now);
+    // Scoped to this machine: an agent's snapshot is authoritative for its own
+    // node and for nothing else. Without this, each agent's post would delete
+    // every other agent's rows.
+    const report = await this.#pipeline.ingest('host-agent', facet, rows, now, {
+      column: 'node',
+      value: node,
+    });
     await this.#tokens.touch(node, now);
 
     return report;

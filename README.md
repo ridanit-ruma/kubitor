@@ -309,6 +309,39 @@ Step 3 matters: if the migration in the backup is **newer** than the image you
 are restoring into, roll the image forward first. A restore discovered halfway
 through a migration is the worst version of this.
 
+## SSH sessions
+
+**Off in every agent until you turn it on.** This is a feature people are
+subject to, so the switch is on the machine being watched rather than on the
+dashboard watching it, and the Sessions screen does not appear until something
+is actually reporting.
+
+```bash
+KUBITOR_AGENT_SESSIONS=access                # or `full`; `off` is the default
+KUBITOR_AGENT_AUTH_LOG=/var/log/auth.log     # /var/log/secure on RHEL
+```
+
+**Who is logged in** is read from `/proc`: sshd writes the session into its own
+process title, and that, the login uid and the start time are all world-readable
+— so the agent reads them as `nobody` with every capability dropped. It needs to
+see the host's processes, which means `hostPID: true` on the DaemonSet and
+nothing more. That is a real privilege and not the default; add it deliberately.
+
+**Who tried** is read from sshd's log, because sshd offers no other way to know:
+there is no socket, no file and no API that reports authentication attempts.
+The agent's image has no `journalctl` and cannot get one, so a machine that logs
+only to journald has no attempts to read from inside a pod — run the agent as a
+systemd unit there, or point `KUBITOR_AGENT_AUTH_LOG` at a plain-text log.
+
+`invalid user` is kept separate from a wrong password on purpose. Somebody
+guessing at account names and somebody mistyping their own password are
+different events, and an operator reads them differently.
+
+**"Cannot read" is an answer, not an empty list.** `hidepid` on `/proc`, a pod
+without `hostPID`, and a missing auth log each produce nothing for reasons that
+have nothing to do with who is logged in, and each says so rather than showing a
+reassuring blank.
+
 ## Who can do what
 
 Every account used to be equal, which was fine while kubitor only read a

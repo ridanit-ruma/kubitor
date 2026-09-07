@@ -225,3 +225,104 @@ async function routeNames(ctx: {
     .execute();
   return rows.map((row) => row.name);
 }
+
+describeEachDialect('IngestPipeline scoped snapshots', (ctx) => {
+  let pipeline: IngestPipeline;
+
+  beforeEach(async () => {
+    await migrateToLatest(ctx.db, ctx.kind);
+    await ctx.db.deleteFrom('facet_host_sessions').execute();
+    pipeline = new IngestPipeline(ctx.db, ctx.sqlHelper);
+  });
+
+  function session(node: string, pid: number, user = 'ruma'): Record<string, unknown> {
+    return {
+      observed_at: NOW,
+      node,
+      user,
+      tty: 'pts/0',
+      kind: 'shell',
+      pid,
+      since: NOW - 60_000,
+    };
+  }
+
+  async function stored(): Promise<string[]> {
+    const rows = await ctx.db
+      .selectFrom('facet_host_sessions')
+      .select(['node', 'pid'])
+      .orderBy('node', 'asc')
+      .orderBy('pid', 'asc')
+      .execute();
+    return rows.map((row) => `${row.node}:${row.pid}`);
+  }
+
+  const scope = (node: string) => ({ column: 'node', value: node });
+
+  /**
+   * The bug this exists for. A per-machine collector runs once per machine, and
+   * an unscoped snapshot is authoritative for the whole integration — so four
+   * agents would take turns deleting each other's rows and leave whichever
+   * posted last.
+   */
+  it("keeps one machine's snapshot from deleting another's", async () => {
+    await pipeline.ingest('host-agent', 'host.sessions', [session('ken', 1)], NOW, scope('ken'));
+    await pipeline.ingest(
+      'host-agent',
+      'host.sessions',
+      [session('calder', 2)],
+      NOW,
+      scope('calder'),
+    );
+
+    expect(await stored()).toEqual(['calder:2', 'ken:1']);
+  });
+
+  it('still replaces what that machine reported before', async () => {
+    await pipeline.ingest(
+      'host-agent',
+      'host.sessions',
+      [session('ken', 1), session('ken', 2)],
+      NOW,
+      scope('ken'),
+    );
+    await pipeline.ingest('host-agent', 'host.sessions', [session('ken', 3)], NOW, scope('ken'));
+
+    expect(await stored()).toEqual(['ken:3']);
+  });
+
+  /**
+   * An empty snapshot is a real answer — nobody is logged in here — so the
+   * delete is driven by the scope rather than by the rows. Deriving it from the
+   * rows would leave the last session on screen forever after everybody logged
+   * out.
+   */
+  it('takes an empty snapshot as nobody being logged in', async () => {
+    await pipeline.ingest('host-agent', 'host.sessions', [session('ken', 1)], NOW, scope('ken'));
+    await pipeline.ingest('host-agent', 'host.sessions', [], NOW, scope('ken'));
+
+    expect(await stored()).toEqual([]);
+  });
+
+  it('leaves another machine alone when one reports nobody', async () => {
+    await pipeline.ingest('host-agent', 'host.sessions', [session('ken', 1)], NOW, scope('ken'));
+    await pipeline.ingest(
+      'host-agent',
+      'host.sessions',
+      [session('calder', 2)],
+      NOW,
+      scope('calder'),
+    );
+    await pipeline.ingest('host-agent', 'host.sessions', [], NOW, scope('ken'));
+
+    expect(await stored()).toEqual(['calder:2']);
+  });
+
+  /** Without a scope the old behaviour stands, which is right for a cluster-wide collector. */
+  it('replaces everything when no scope is given', async () => {
+    await pipeline.ingest('host-agent', 'host.sessions', [session('ken', 1)], NOW, scope('ken'));
+    await pipeline.ingest('host-agent', 'host.sessions', [session('calder', 2)], NOW);
+
+    expect(await stored()).toEqual(['calder:2']);
+  });
+});

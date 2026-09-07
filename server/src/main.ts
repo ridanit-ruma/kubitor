@@ -166,6 +166,13 @@ async function bootstrap(): Promise<void> {
   const hostAgent = hostAgentIntegration({
     reporting: () => liveCache.reportingHosts(Date.now()),
     expected: () => nodeCount,
+    sessionsSeen: async () => {
+      const [sessions, access] = await Promise.all([
+        db.selectFrom('facet_host_sessions').select('node').limit(1).executeTakeFirst(),
+        db.selectFrom('facet_host_access').select('node').limit(1).executeTakeFirst(),
+      ]);
+      return { sessions: sessions !== undefined, access: access !== undefined };
+    },
   });
 
   const persistedAt = new Map<string, number>();

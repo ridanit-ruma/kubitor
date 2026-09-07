@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { hostNameFrom } from './identity.js';
 import { createHostCollector } from './reading.js';
 import { deliveryNote, Sender } from './sender.js';
+import { SessionCollector, sessionModeFrom } from './session-collector.js';
 import { DEFAULT_AFTER_MS, DEFAULT_REPEAT_MS, Witness } from './witness.js';
 
 /**
@@ -36,6 +37,19 @@ const SA_TOKEN_PATH = process.env.KUBITOR_SA_TOKEN_PATH ?? '/var/run/secrets/kub
  * of however many processes that can — see witness.ts for why duplicates from
  * several nodes are the point rather than a flaw.
  */
+/**
+ * Whether this machine reports who is logged into it.
+ *
+ * `off` by default and off means nothing is read. People are subject to this,
+ * so the switch is on the machine being watched rather than on the dashboard
+ * watching it.
+ */
+const SESSION_MODE = sessionModeFrom(process.env.KUBITOR_AGENT_SESSIONS);
+/** `/var/log/auth.log` on Debian, `/var/log/secure` on RHEL. */
+const AUTH_LOG = process.env.KUBITOR_AGENT_AUTH_LOG ?? null;
+/** How often sessions are looked at. They change on a human timescale. */
+const SESSION_INTERVAL_MS = Number(process.env.KUBITOR_AGENT_SESSION_INTERVAL_MS ?? 15_000);
+
 const WITNESS_URL = process.env.KUBITOR_AGENT_WITNESS_URL ?? null;
 const WITNESS_AFTER_MS = Number(process.env.KUBITOR_AGENT_WITNESS_AFTER_MS ?? DEFAULT_AFTER_MS);
 const WITNESS_REPEAT_MS = Number(process.env.KUBITOR_AGENT_WITNESS_REPEAT_MS ?? DEFAULT_REPEAT_MS);
@@ -75,6 +89,76 @@ async function main(): Promise<void> {
   process.on('SIGINT', stop);
 
   const collect = createHostCollector(node);
+
+  const sessions = new SessionCollector({
+    node,
+    mode: SESSION_MODE,
+    authLogPath: AUTH_LOG,
+  });
+
+  // Its own sender, and its own endpoints: a burst of login attempts must not
+  // delay the once-a-second host reading, and a server that refuses one must
+  // not wedge the other.
+  const accessSender = new Sender({
+    endpoint: `${server}/api/ingest/access`,
+    token: readToken,
+    maxBuffered: MAX_BUFFERED,
+  });
+
+  /**
+   * Sessions are posted directly, not through a Sender.
+   *
+   * A Sender buffers so an outage does not lose readings, which is right for a
+   * stream and wrong for a snapshot: the useful thing about "who is logged in"
+   * is that it is true now. Replaying a snapshot from five minutes ago would
+   * put people back on the screen who had already gone.
+   */
+  const postSessions = async (rows: Record<string, unknown>[]): Promise<void> => {
+    const token = await readToken();
+    if (token === null) return;
+
+    try {
+      await fetch(`${server}/api/ingest/sessions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rows }),
+      });
+    } catch {
+      // The next tick carries a fresh snapshot; there is nothing here worth
+      // retrying, and the host reading already reports an unreachable server.
+    }
+  };
+
+  let lastSessionsAt = 0;
+  let lastSessionComplaint = 0;
+
+  const reportSessions = async (): Promise<void> => {
+    if (!sessions.enabled) return;
+
+    const now = Date.now();
+    if (now - lastSessionsAt < SESSION_INTERVAL_MS) return;
+    lastSessionsAt = now;
+
+    const collection = await sessions.collect();
+
+    if (collection.sessionsProblem !== null && now - lastSessionComplaint > 3_600_000) {
+      lastSessionComplaint = now;
+      console.warn(
+        `cannot read sessions (${collection.sessionsProblem}); ` +
+          'the agent needs hostPID, and /proc must not be mounted with hidepid',
+      );
+    }
+
+    if (collection.access.length > 0) {
+      for (const row of collection.access) accessSender.enqueue(row);
+      await accessSender.flush();
+    }
+
+    // Sent every time, including empty: an empty snapshot is the answer
+    // "nobody is logged in here", and withholding it would leave the last
+    // session on screen after everybody had gone.
+    await postSessions(collection.sessions);
+  };
   const witness = new Witness({
     url: WITNESS_URL,
     host: node,
@@ -84,6 +168,11 @@ async function main(): Promise<void> {
   });
 
   console.log(`kubitor agent reporting ${node} to ${server} every ${INTERVAL_MS}ms`);
+  if (sessions.enabled) {
+    console.log(
+      `sessions: ${SESSION_MODE}${AUTH_LOG ? `, attempts from ${AUTH_LOG}` : ', no auth log configured'}`,
+    );
+  }
   if (witness.enabled) {
     console.log(`will report the server unreachable to ${WITNESS_URL} after ${WITNESS_AFTER_MS}ms`);
   }
@@ -103,6 +192,8 @@ async function main(): Promise<void> {
 
       // Once a second is too often to log a failure every time; say it at most
       // once a minute so a long outage leaves a readable trail, not a flood.
+      await reportSessions();
+
       const note = deliveryNote(result, sender.pending, server);
       if (note !== null && Date.now() - lastComplaint > 60_000) {
         lastComplaint = Date.now();

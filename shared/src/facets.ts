@@ -11,6 +11,7 @@ export const FACET_IDS = [
   'gitops.sync',
   'host.hardware',
   'host.resources',
+  'host.access',
   'host.sessions',
   'security.alerts',
 ] as const;
@@ -36,6 +37,10 @@ export const FACET_KIND: Record<FacetId, FacetKind> = {
   'gitops.sync': 'state',
   'host.hardware': 'event',
   'host.resources': 'state',
-  'host.sessions': 'event',
+  // Attempts are a log; sessions are who is connected right now. They were one
+  // declared facet, and they are not one thing: an attempt happened, a session
+  // is happening.
+  'host.access': 'event',
+  'host.sessions': 'state',
   'security.alerts': 'event',
 };

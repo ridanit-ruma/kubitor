@@ -47,6 +47,17 @@ export const CORE_NAV: readonly NavEntry[] = [
   // The first thing in the `security` category, which the manifest has always
   // had a slot for and nothing to put in it.
   { id: 'alerts', title: 'Alerts', category: 'security', href: '/alerts', order: 0 },
+  {
+    id: 'sessions',
+    title: 'Sessions',
+    category: 'security',
+    href: '/sessions',
+    // Absent unless an agent is configured to report them, which is off by
+    // default: this is a feature people are subject to, and an empty screen
+    // offering to watch colleagues is not a good default.
+    requiresFacet: 'host.sessions',
+    order: 1,
+  },
   { id: 'integrations', title: 'Integrations', category: 'settings', href: '/settings', order: 0 },
   {
     id: 'accounts',

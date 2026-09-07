@@ -175,6 +175,31 @@ const hostResources = z.object({
   attrs,
 });
 
+const hostAccess = z.object({
+  at: z.number().int(),
+  node: text(253),
+  outcome: z.enum(['accepted', 'failed', 'invalid_user', 'disconnected']),
+  method: z.enum(['publickey', 'password', 'keyboard-interactive', 'none']),
+  user: text(253),
+  client_ip: text(64),
+  client_port: z.number().int().min(0).max(65535).nullish(),
+  /** Ties an attempt to the session it became, where both were seen. */
+  sshd_pid: z.number().int().min(0).nullish(),
+  attrs,
+});
+
+const hostSessions = z.object({
+  observed_at: z.number().int(),
+  node: text(253),
+  user: text(253),
+  tty: text(64).nullish(),
+  kind: z.enum(['shell', 'exec', 'sftp', 'forward']),
+  pid: z.number().int().min(0),
+  since: z.number().int(),
+  from_ip: text(64).nullish(),
+  attrs,
+});
+
 export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
   {
     id: 'host.hardware',
@@ -241,6 +266,25 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     jsonColumns: ['attrs'],
     retentionMs: 14 * DAY_MS,
     schema: httpAccess,
+  },
+  {
+    id: 'host.access',
+    kind: 'event',
+    table: 'facet_host_access',
+    timeColumn: 'at',
+    orderTiebreak: ['client_ip', 'user', 'outcome'],
+    jsonColumns: ['attrs'],
+    retentionMs: 30 * DAY_MS,
+    schema: hostAccess,
+  },
+  {
+    id: 'host.sessions',
+    kind: 'state',
+    table: 'facet_host_sessions',
+    timeColumn: 'observed_at',
+    orderTiebreak: ['node', 'pid'],
+    jsonColumns: ['attrs'],
+    schema: hostSessions,
   },
   {
     id: 'http.routes',

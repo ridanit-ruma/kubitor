@@ -78,6 +78,8 @@ const FACET_BY_PATH: Record<string, string> = {
   routes: 'http.routes',
   hardware: 'host.hardware',
   resources: 'host.resources',
+  access: 'host.access',
+  sessions: 'host.sessions',
 };
 
 @Controller('api')

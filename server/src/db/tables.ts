@@ -63,6 +63,9 @@ export const TABLES: readonly TableSpec[] = [
     // An alert that is still firing is never old enough to forget.
     liveWhileNull: 'resolved_at',
   },
+  // Long enough to see a pattern in who has been knocking.
+  { name: 'facet_host_access', kind: 'event', timeColumn: 'at', retentionMs: 30 * DAY_MS },
+  { name: 'facet_host_sessions', kind: 'state' },
   {
     name: 'notifications',
     kind: 'event',

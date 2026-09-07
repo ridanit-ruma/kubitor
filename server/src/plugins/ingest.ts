@@ -30,11 +30,21 @@ export class IngestPipeline {
     this.#sql = dialect;
   }
 
+  /**
+   * `scope` narrows what a state snapshot is authoritative for.
+   *
+   * Without it, a snapshot replaces everything its integration ever reported —
+   * right for a collector that sees the whole cluster at once, and wrong for
+   * one instance of a per-machine collector. Four agents each posting the
+   * sessions on their own node would otherwise take turns deleting each
+   * other's, leaving whichever posted last.
+   */
   async ingest(
     integration: string,
     facet: string,
     rows: readonly unknown[],
     now: number,
+    scope?: { column: string; value: string },
   ): Promise<IngestReport> {
     const report: IngestReport = { accepted: 0, dropped: 0, reasons: {} };
 
@@ -55,7 +65,7 @@ export class IngestPipeline {
     if (descriptor.kind === 'event') {
       await this.#insert(descriptor, prepared);
     } else {
-      await this.#replaceSnapshot(descriptor, integration, prepared);
+      await this.#replaceSnapshot(descriptor, integration, prepared, scope);
     }
 
     report.accepted = prepared.length;
@@ -106,19 +116,29 @@ export class IngestPipeline {
   /**
    * A snapshot is authoritative for the integration that sent it: everything
    * that source previously reported is replaced, so rows that disappeared
-   * upstream disappear here. Other integrations are untouched.
+   * upstream disappear here. Other integrations are untouched, and so is
+   * anything outside `scope` where one is given.
+   *
+   * The delete has to be driven by the scope rather than by the rows, because
+   * an empty snapshot is a real answer — "nobody is logged in here" — and one
+   * derived from the rows present would leave the last session on screen
+   * forever after everybody logged out.
    */
   async #replaceSnapshot(
     descriptor: FacetDescriptor,
     integration: string,
     rows: Record<string, unknown>[],
+    scope?: { column: string; value: string },
   ): Promise<void> {
     await this.#db.transaction().execute(async (trx) => {
-      await trx
+      let removing = trx
         .deleteFrom(descriptor.table as keyof Database)
         // biome-ignore lint/suspicious/noExplicitAny: table is chosen by descriptor
-        .where('integration' as any, '=', integration)
-        .execute();
+        .where('integration' as any, '=', integration);
+
+      // biome-ignore lint/suspicious/noExplicitAny: column is named by the caller's code, never by a request
+      if (scope) removing = removing.where(scope.column as any, '=', scope.value);
+      await removing.execute();
 
       for (const chunk of chunks(rows, 500)) {
         await trx

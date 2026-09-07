@@ -270,6 +270,34 @@ export interface NotificationsTable {
   error: string | null;
 }
 
+/** One attempt to log in, successful or not. */
+export interface FacetHostAccessTable {
+  at: number;
+  integration: string;
+  node: string;
+  outcome: string;
+  method: string;
+  user: string;
+  client_ip: string;
+  client_port: number | null;
+  sshd_pid: number | null;
+  attrs: string;
+}
+
+/** One session that is open right now. */
+export interface FacetHostSessionsTable {
+  observed_at: number;
+  integration: string;
+  node: string;
+  user: string;
+  tty: string | null;
+  kind: string;
+  pid: number;
+  since: number;
+  from_ip: string | null;
+  attrs: string;
+}
+
 /** Every table kubitor stores. Later plans extend this interface. */
 export interface Database {
   settings: SettingsTable;
@@ -290,4 +318,6 @@ export interface Database {
   backups: BackupsTable;
   alerts: AlertsTable;
   notifications: NotificationsTable;
+  facet_host_access: FacetHostAccessTable;
+  facet_host_sessions: FacetHostSessionsTable;
 }

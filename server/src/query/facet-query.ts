@@ -50,6 +50,14 @@ const QUERYABLE: Record<string, { filter: readonly string[]; search: readonly st
   },
   'host.hardware': { filter: ['integration', 'node'], search: ['node'] },
   'host.resources': { filter: ['integration', 'node'], search: ['node', 'cpu_model'] },
+  'host.access': {
+    filter: ['integration', 'node', 'outcome', 'method', 'user'],
+    search: ['user', 'client_ip', 'node'],
+  },
+  'host.sessions': {
+    filter: ['integration', 'node', 'user', 'kind'],
+    search: ['user', 'node', 'tty', 'from_ip'],
+  },
 };
 
 export const MAX_PAGE = 500;

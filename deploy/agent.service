@@ -23,6 +23,12 @@
 # narrow address, not the operator's Discord webhook -- it goes on every node.
 #
 #   KUBITOR_AGENT_WITNESS_URL=https://hooks.example.com/kubitor-down
+#
+# And optionally, who is logged into this machine. Off unless set, because
+# people are subject to it. Reading attempts needs a plain-text auth log.
+#
+#   KUBITOR_AGENT_SESSIONS=access
+#   KUBITOR_AGENT_AUTH_LOG=/var/log/auth.log
 
 [Unit]
 Description=kubitor host agent
