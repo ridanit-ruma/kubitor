@@ -298,6 +298,21 @@ export interface FacetHostSessionsTable {
   attrs: string;
 }
 
+/** One command seen inside a session. */
+export interface FacetHostCommandsTable {
+  at: number;
+  integration: string;
+  node: string;
+  session_pid: number | null;
+  user: string;
+  pid: number;
+  comm: string;
+  argv: string;
+  /** `sampled` or `audit`; the difference between "missed it" and "it did not happen". */
+  source: string;
+  attrs: string;
+}
+
 /** Every table kubitor stores. Later plans extend this interface. */
 export interface Database {
   settings: SettingsTable;
@@ -320,4 +335,5 @@ export interface Database {
   notifications: NotificationsTable;
   facet_host_access: FacetHostAccessTable;
   facet_host_sessions: FacetHostSessionsTable;
+  facet_host_commands: FacetHostCommandsTable;
 }

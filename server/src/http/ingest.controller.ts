@@ -22,6 +22,7 @@ const AGENT_FACETS: Record<string, string> = {
   hardware: 'host.hardware',
   access: 'host.access',
   sessions: 'host.sessions',
+  commands: 'host.commands',
 };
 
 const body = z.object({

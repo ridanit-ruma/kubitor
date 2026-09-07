@@ -54,6 +54,10 @@ const QUERYABLE: Record<string, { filter: readonly string[]; search: readonly st
     filter: ['integration', 'node', 'outcome', 'method', 'user'],
     search: ['user', 'client_ip', 'node'],
   },
+  'host.commands': {
+    filter: ['integration', 'node', 'user', 'source', 'session_pid'],
+    search: ['comm', 'argv', 'user', 'node'],
+  },
   'host.sessions': {
     filter: ['integration', 'node', 'user', 'kind'],
     search: ['user', 'node', 'tty', 'from_ip'],

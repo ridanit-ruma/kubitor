@@ -42,6 +42,16 @@ function sshd(pid: number, title: string): void {
   writeFileSync(join(dir, 'stat'), `${pid} (sshd) S ${after.join(' ')}`);
 }
 
+function child(pid: number, ppid: number, comm: string, cmdline: string[] = [comm]): void {
+  const dir = join(procRoot, String(pid));
+  mkdirSync(dir);
+  writeFileSync(join(dir, 'cmdline'), `${cmdline.join('\0')}\0`);
+  const afterState = Array.from({ length: 30 }, () => '0');
+  afterState[0] = String(ppid);
+  afterState[18] = '1000';
+  writeFileSync(join(dir, 'stat'), `${pid} (${comm}) S ${afterState.join(' ')}`);
+}
+
 function collector(mode: 'off' | 'access' | 'full' = 'full', withLog = true) {
   return new SessionCollector({
     node: 'ken',
@@ -73,6 +83,7 @@ describe('SessionCollector', () => {
     expect(collection).toEqual({
       access: [],
       sessions: [],
+      commands: [],
       sessionsProblem: null,
       accessAvailable: false,
     });
@@ -162,6 +173,52 @@ describe('SessionCollector', () => {
 
     expect(collection.accessAvailable).toBe(false);
     expect(collection.sessions).toHaveLength(1);
+  });
+
+  /**
+   * "Who is on the machine" and "what they are typing" are different things to
+   * agree to, and the second must not arrive as a side effect of the first.
+   */
+  it('records no commands in access mode, only who is connected', async () => {
+    sshd(500, 'sshd: ruma@pts/0');
+    child(501, 500, 'bash');
+
+    const collection = await collector('access').collect();
+
+    expect(collection.sessions).toHaveLength(1);
+    expect(collection.commands).toEqual([]);
+  });
+
+  it('records what runs inside a session in full mode', async () => {
+    sshd(500, 'sshd: ruma@pts/0');
+    child(501, 500, 'bash');
+    child(502, 501, 'kubectl', ['kubectl', 'get', 'pods']);
+
+    const { commands } = await collector('full').collect();
+
+    expect(commands.map((c) => c.comm)).toEqual(['bash', 'kubectl']);
+    expect(commands.every((c) => c.source === 'sampled')).toBe(true);
+    expect(commands.every((c) => c.user === 'ruma')).toBe(true);
+  });
+
+  /** A row per second per open shell is a table nobody can read. */
+  it('reports a command once, not on every sample', async () => {
+    sshd(500, 'sshd: ruma@pts/0');
+    child(501, 500, 'bash');
+
+    const reading = collector('full');
+    expect((await reading.collect()).commands).toHaveLength(1);
+    expect((await reading.collect()).commands).toEqual([]);
+  });
+
+  it('redacts before the row leaves the machine', async () => {
+    sshd(500, 'sshd: ruma@pts/0');
+    child(501, 500, 'mysql', ['mysql', '--password=hunter2']);
+
+    const { commands } = await collector('full').collect();
+
+    expect(commands[0]?.argv).not.toContain('hunter2');
+    expect(commands[0]?.argv).toContain('redacted');
   });
 
   it('passes on why sessions could not be read', async () => {

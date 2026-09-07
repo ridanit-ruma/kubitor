@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { CommandDiff, readSessionCommands } from './commands.js';
 import { readSessions, type SessionsProblem } from './sessions.js';
 import { type AccessAttempt, parseSshdLine } from './sshd-log.js';
 
@@ -26,6 +28,17 @@ export interface AccessRow extends Record<string, unknown> {
   sshd_pid: number | null;
 }
 
+export interface CommandRow extends Record<string, unknown> {
+  at: number;
+  node: string;
+  session_pid: number | null;
+  user: string;
+  pid: number;
+  comm: string;
+  argv: string;
+  source: 'sampled';
+}
+
 export interface SessionRow extends Record<string, unknown> {
   observed_at: number;
   node: string;
@@ -50,12 +63,16 @@ export interface CollectorOptions {
    */
   authLogPath: string | null;
   procRoot?: string;
+  /** Record the program only, never its arguments. */
+  commOnly?: boolean;
   now?(): number;
 }
 
 export interface SessionCollection {
   access: AccessRow[];
   sessions: SessionRow[];
+  /** Empty unless the mode is `full`. Sampled, and every row says so. */
+  commands: CommandRow[];
   /** Why the sessions list may be empty for reasons other than nobody being on. */
   sessionsProblem: SessionsProblem | null;
   /** Whether attempts could be read at all. */
@@ -72,6 +89,7 @@ export interface SessionCollection {
 export class SessionCollector {
   readonly #options: CollectorOptions;
   readonly #now: () => number;
+  readonly #commands = new CommandDiff();
   /** How far into the log this agent has already read. */
   #logOffset: number | null = null;
 
@@ -86,7 +104,13 @@ export class SessionCollector {
 
   async collect(): Promise<SessionCollection> {
     if (!this.enabled) {
-      return { access: [], sessions: [], sessionsProblem: null, accessAvailable: false };
+      return {
+        access: [],
+        sessions: [],
+        commands: [],
+        sessionsProblem: null,
+        accessAvailable: false,
+      };
     }
 
     const [access, sessions] = await Promise.all([this.#readAccess(), this.#readSessions()]);
@@ -96,7 +120,45 @@ export class SessionCollector {
       accessAvailable: access.available,
       sessions: sessions.rows,
       sessionsProblem: sessions.problem,
+      commands: await this.#readCommands(sessions.rows),
     };
+  }
+
+  /**
+   * What is running inside the sessions just read, once each.
+   *
+   * `full` only. `access` reports who is connected and stops there, because
+   * "who is on the machine" and "what they are typing" are different things to
+   * agree to, and the second should not arrive as a side effect of the first.
+   */
+  async #readCommands(sessions: readonly SessionRow[]): Promise<CommandRow[]> {
+    if (this.#options.mode !== 'full' || sessions.length === 0) return [];
+
+    const root = this.#options.procRoot ?? '/proc';
+    const bootMs = await bootTimeMs(root);
+
+    const running = await readSessionCommands(
+      {
+        sessionPids: sessions.map((session) => session.pid),
+        procRoot: root,
+        ...(this.#options.commOnly === undefined ? {} : { commOnly: this.#options.commOnly }),
+      },
+      bootMs,
+    );
+
+    const owner = new Map(sessions.map((session) => [session.pid, session.user]));
+    const at = this.#now();
+
+    return this.#commands.next(running).map((command) => ({
+      at,
+      node: this.#options.node,
+      session_pid: command.sessionPid,
+      user: owner.get(command.sessionPid) ?? '',
+      pid: command.pid,
+      comm: command.comm,
+      argv: command.argv.join(' '),
+      source: 'sampled' as const,
+    }));
   }
 
   async #readSessions(): Promise<{ rows: SessionRow[]; problem: SessionsProblem | null }> {
@@ -171,5 +233,16 @@ export class SessionCollector {
     }
 
     return { rows, available: true };
+  }
+}
+
+/** Epoch milliseconds of the kernel's boot, which /proc counts everything from. */
+async function bootTimeMs(root: string): Promise<number | null> {
+  try {
+    const stat = await readFile(join(root, 'stat'), 'utf8');
+    const btime = /^btime (\d+)$/m.exec(stat);
+    return btime ? Number(btime[1]) * 1000 : null;
+  } catch {
+    return null;
   }
 }

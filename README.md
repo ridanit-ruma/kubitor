@@ -161,6 +161,8 @@ by construction.
 | `KUBITOR_PUBLIC_URL` | — | Where kubitor is reachable, for links in messages |
 | `KUBITOR_HEARTBEAT_URL` | — | Pinged while alive, so silence is an alarm |
 | `KUBITOR_AGENT_WITNESS_URL` | — | On the agent: where to report the server unreachable |
+| `KUBITOR_AGENT_SESSIONS` | `off` | `access` or `full`; who is logged in, and what they ran |
+| `KUBITOR_AGENT_COMMANDS_COMM_ONLY` | `false` | Record the program, never its arguments |
 
 The agent takes `KUBITOR_SERVER_URL`, `KUBITOR_HOST_NAME` (the machine's name; `KUBITOR_NODE_NAME`
 still works) and either `KUBITOR_AGENT_TOKEN` or a projected token mounted at
@@ -336,6 +338,29 @@ systemd unit there, or point `KUBITOR_AGENT_AUTH_LOG` at a plain-text log.
 `invalid user` is kept separate from a wrong password on purpose. Somebody
 guessing at account names and somebody mistyping their own password are
 different events, and an operator reads them differently.
+
+### What ran inside a session
+
+`KUBITOR_AGENT_SESSIONS=full` also records the commands, sampled from the
+process tree once a second and shown on the session rather than as a feed.
+
+**Sampled means incomplete, and every row says so.** Anything shorter than a
+second is missed, which is most commands. A list that looked complete and was
+not would be worse than none, because an operator would read its absences as
+evidence — and absences from a sampler are evidence of nothing. Where auditd is
+installed the same screen gets complete rows and says `audit` instead.
+
+**Arguments are redacted on the machine, before the row is sent.** Redacting
+server-side would be too late: by then the secret has been through a request
+body, a log line and another machine's memory. `--password=`, `-pSECRET`,
+`FOO_TOKEN=`, `Authorization: Bearer`, credentials inside a connection URL and
+long key-shaped strings are all replaced. Set
+`KUBITOR_AGENT_COMMANDS_COMM_ONLY=true` to record the program and never its
+arguments, for anybody who would rather not rely on a pattern list.
+
+Kept for **48 hours**, unlike everything else here. The operational value of
+"what did somebody run" decays within a day; the liability of keeping it does
+not decay at all.
 
 **"Cannot read" is an answer, not an empty list.** `hidepid` on `/proc`, a pod
 without `hostPID`, and a missing auth log each produce nothing for reasons that

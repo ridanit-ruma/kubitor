@@ -66,6 +66,9 @@ export const TABLES: readonly TableSpec[] = [
   // Long enough to see a pattern in who has been knocking.
   { name: 'facet_host_access', kind: 'event', timeColumn: 'at', retentionMs: 30 * DAY_MS },
   { name: 'facet_host_sessions', kind: 'state' },
+  // Two days. The operational value of "what did somebody run" decays within a
+  // day; the liability of keeping it does not decay at all.
+  { name: 'facet_host_commands', kind: 'event', timeColumn: 'at', retentionMs: 2 * DAY_MS },
   {
     name: 'notifications',
     kind: 'event',

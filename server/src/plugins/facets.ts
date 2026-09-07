@@ -200,6 +200,18 @@ const hostSessions = z.object({
   attrs,
 });
 
+const hostCommands = z.object({
+  at: z.number().int(),
+  node: text(253),
+  session_pid: z.number().int().min(0).nullish(),
+  user: text(253),
+  pid: z.number().int().min(0),
+  comm: text(256),
+  argv: text(MAX_TEXT),
+  source: z.enum(['sampled', 'audit']),
+  attrs,
+});
+
 export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
   {
     id: 'host.hardware',
@@ -285,6 +297,16 @@ export const FACET_DESCRIPTORS: readonly FacetDescriptor[] = [
     orderTiebreak: ['node', 'pid'],
     jsonColumns: ['attrs'],
     schema: hostSessions,
+  },
+  {
+    id: 'host.commands',
+    kind: 'event',
+    table: 'facet_host_commands',
+    timeColumn: 'at',
+    orderTiebreak: ['node', 'pid', 'comm'],
+    jsonColumns: ['attrs'],
+    retentionMs: 2 * DAY_MS,
+    schema: hostCommands,
   },
   {
     id: 'http.routes',

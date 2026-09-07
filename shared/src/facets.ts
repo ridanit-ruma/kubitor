@@ -13,6 +13,7 @@ export const FACET_IDS = [
   'host.resources',
   'host.access',
   'host.sessions',
+  'host.commands',
   'security.alerts',
 ] as const;
 
@@ -42,5 +43,6 @@ export const FACET_KIND: Record<FacetId, FacetKind> = {
   // is happening.
   'host.access': 'event',
   'host.sessions': 'state',
+  'host.commands': 'event',
   'security.alerts': 'event',
 };

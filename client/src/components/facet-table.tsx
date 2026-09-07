@@ -103,6 +103,13 @@ interface FacetTableProps<Row> {
   searchPlaceholder: string;
   emptyMessage: string;
   onRowHref?(row: Row): string | undefined;
+  /**
+   * Opens something of the screen's own instead of the built-in row panel.
+   *
+   * For a row whose interesting detail is not its own fields — a session, whose
+   * question is what ran inside it rather than which columns were trimmed.
+   */
+  onRowClick?(row: Row): void;
   /** A stable identity for the row; falls back to its whole content. */
   rowKey?(row: Row): string;
   /**
@@ -148,6 +155,7 @@ export function FacetTable<Row extends Record<string, unknown>>({
   searchPlaceholder,
   emptyMessage,
   onRowHref,
+  onRowClick,
   rowKey,
   detailFields,
   pageSize = 100,
@@ -376,7 +384,11 @@ export function FacetTable<Row extends Record<string, unknown>>({
                 <TableRow
                   key={rowKey ? rowKey(row) : JSON.stringify(row)}
                   className="cursor-pointer"
-                  onClick={() => (href ? router.push(href) : setOpened(row))}
+                  onClick={() => {
+                    if (href) router.push(href);
+                    else if (onRowClick) onRowClick(row);
+                    else setOpened(row);
+                  }}
                 >
                   {columns.map((column) => (
                     <TableCell

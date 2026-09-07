@@ -1,9 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type Column, FacetTable } from '@/components/facet-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { api } from '@/lib/api';
 import { formatTimestamp } from '@/lib/format';
 
 interface SessionRow extends Record<string, unknown> {
@@ -14,6 +22,14 @@ interface SessionRow extends Record<string, unknown> {
   pid: number;
   since: number;
   from_ip: string | null;
+}
+
+interface CommandRow extends Record<string, unknown> {
+  at: number;
+  pid: number;
+  comm: string;
+  argv: string;
+  source: string;
 }
 
 interface AccessRow extends Record<string, unknown> {
@@ -145,6 +161,7 @@ const accessColumns: Column<AccessRow>[] = [
  */
 export default function SessionsPage() {
   const [tab, setTab] = useState<'open' | 'attempts'>('open');
+  const [opened, setOpened] = useState<SessionRow | null>(null);
   const now = Date.now();
 
   return (
@@ -176,6 +193,7 @@ export default function SessionsPage() {
           searchPlaceholder="Find a session by account, machine or terminal"
           emptyMessage="Nobody is logged in to any machine reporting sessions."
           rowKey={(row) => `${row.node}:${row.pid}`}
+          onRowClick={(row) => setOpened(row)}
         />
       ) : (
         <FacetTable<AccessRow>
@@ -192,6 +210,81 @@ export default function SessionsPage() {
           emptyMessage="No login attempt has been recorded. Attempts are read from an auth log; a machine that logs only to journald has none to read."
         />
       )}
+      <SessionCommands session={opened} onClose={() => setOpened(null)} />
     </div>
+  );
+}
+
+/**
+ * What ran inside one session.
+ *
+ * On the session rather than on a screen of its own. A global feed of every
+ * command on every machine invites being read as an audit trail, which sampled
+ * rows are not — and the question anybody actually has is about one session.
+ */
+function SessionCommands({ session, onClose }: { session: SessionRow | null; onClose(): void }) {
+  const [commands, setCommands] = useState<CommandRow[] | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      setCommands(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const query = new URLSearchParams({
+        node: session.node,
+        session_pid: String(session.pid),
+        limit: '200',
+      });
+      const page = await api.facet('commands', query);
+      if (!cancelled) setCommands(page.rows as CommandRow[]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  if (!session) return null;
+
+  const sampled = commands?.some((command) => command.source === 'sampled') ?? true;
+
+  return (
+    <Sheet open onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle className="font-mono text-sm">
+            {session.user} on {session.node}
+          </SheetTitle>
+          <SheetDescription>
+            {sampled
+              ? 'Sampled once a second, so anything shorter than that is not here. An absence is not evidence that nothing ran.'
+              : 'From auditd, which sees every execution.'}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          {commands === null && <p className="text-sm text-muted-foreground">Reading…</p>}
+
+          {commands?.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Nothing has been sampled in this session. Commands are recorded only where the agent
+              is set to <code className="font-mono text-xs">KUBITOR_AGENT_SESSIONS=full</code>.
+            </p>
+          )}
+
+          {commands?.map((command) => (
+            <div key={`${command.pid}-${command.at}`} className="flex flex-col gap-0.5">
+              <span className="font-mono text-xs break-all">{command.argv || command.comm}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {formatTimestamp(command.at)} · pid {command.pid} · {command.source}
+              </span>
+            </div>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

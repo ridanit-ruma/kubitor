@@ -94,6 +94,7 @@ async function main(): Promise<void> {
     node,
     mode: SESSION_MODE,
     authLogPath: AUTH_LOG,
+    commOnly: process.env.KUBITOR_AGENT_COMMANDS_COMM_ONLY === 'true',
   });
 
   // Its own sender, and its own endpoints: a burst of login attempts must not
@@ -101,6 +102,11 @@ async function main(): Promise<void> {
   // not wedge the other.
   const accessSender = new Sender({
     endpoint: `${server}/api/ingest/access`,
+    token: readToken,
+    maxBuffered: MAX_BUFFERED,
+  });
+  const commandSender = new Sender({
+    endpoint: `${server}/api/ingest/commands`,
     token: readToken,
     maxBuffered: MAX_BUFFERED,
   });
@@ -152,6 +158,11 @@ async function main(): Promise<void> {
     if (collection.access.length > 0) {
       for (const row of collection.access) accessSender.enqueue(row);
       await accessSender.flush();
+    }
+
+    if (collection.commands.length > 0) {
+      for (const row of collection.commands) commandSender.enqueue(row);
+      await commandSender.flush();
     }
 
     // Sent every time, including empty: an empty snapshot is the answer
