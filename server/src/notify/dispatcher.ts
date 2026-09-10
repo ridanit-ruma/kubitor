@@ -2,7 +2,7 @@ import type { Transition } from '../alerts/evaluator.js';
 import type { Severity } from '../alerts/rule.js';
 import type { AlertsRepo } from '../db/alerts.repo.js';
 import type { NotificationsRepo } from '../db/notifications.repo.js';
-import { atLeast, type Channel, type ChannelDeps } from './channel.js';
+import { atLeast, type Channel, type ChannelDeps, type Notification } from './channel.js';
 
 /** How often the queue is drained. Fast enough to feel immediate. */
 export const DRAIN_INTERVAL_MS = 10_000;
@@ -29,7 +29,14 @@ export interface ChannelBinding {
 }
 
 export interface DispatcherDeps {
-  channels: readonly ChannelBinding[];
+  /**
+   * The channels as they are now.
+   *
+   * A supplier rather than an array because these are edited in the dashboard
+   * and must take effect on the next dispatch. `channelSource` memoizes the
+   * rebuild; nothing here should call `channelsFrom` itself.
+   */
+  channels(): readonly ChannelBinding[];
   notifications: NotificationsRepo;
   alerts: AlertsRepo;
   deps: ChannelDeps;
@@ -55,11 +62,18 @@ export class Dispatcher {
   }
 
   get configured(): boolean {
-    return this.#deps.channels.length > 0;
+    return this.#deps.channels().length > 0;
   }
 
+  /**
+   * Starts draining, whether or not anything is configured yet.
+   *
+   * Unconditional on purpose: channels are added from the dashboard now, and a
+   * timer that only started when a channel already existed would mean the first
+   * one somebody adds never delivers until the pod restarts.
+   */
   start(): void {
-    if (this.#timer || !this.configured) return;
+    if (this.#timer) return;
     this.#timer = setInterval(() => void this.drain(), DRAIN_INTERVAL_MS);
     this.#timer.unref?.();
   }
@@ -72,9 +86,10 @@ export class Dispatcher {
   /** Queues what each channel has asked to hear about. Never throws. */
   async enqueue(transitions: readonly Transition[]): Promise<void> {
     const at = this.#deps.now();
+    const bindings = this.#deps.channels();
 
     for (const transition of transitions) {
-      for (const binding of this.#deps.channels) {
+      for (const binding of bindings) {
         if (!atLeast(transition.alert.severity, binding.minimumSeverity)) continue;
 
         await this.#deps.notifications.enqueue({
@@ -104,9 +119,10 @@ export class Dispatcher {
     try {
       const now = this.#deps.now();
       const due = await this.#deps.notifications.due(now);
+      const bindings = this.#deps.channels();
 
       for (const message of due) {
-        const binding = this.#deps.channels.find((each) => each.channel.id === message.channel);
+        const binding = bindings.find((each) => each.channel.id === message.channel);
         const alert = await this.#deps.alerts.byId(message.alertId);
 
         // A channel that has been removed from the configuration, or an alert
@@ -154,4 +170,52 @@ export class Dispatcher {
 
     return { sent, failed };
   }
+
+  /**
+   * Sends one message to one channel, now, outside the queue.
+   *
+   * Outside the queue because a test that retried for ten minutes would answer
+   * the question far too late to be useful, and because a test message has no
+   * alert behind it to attach a queued row to.
+   */
+  async test(channelId: string, by: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const binding = this.#deps.channels().find((each) => each.channel.id === channelId);
+    if (!binding) return { ok: false, error: 'that channel is not configured' };
+
+    try {
+      await binding.channel.send(testNotification(this.#deps.now(), by), this.#deps.deps);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+}
+
+/**
+ * The message a test sends.
+ *
+ * `warning` rather than `critical` so it does not arrive looking like an
+ * emergency, and the summary says "test" first: somebody reading a phone lock
+ * screen has to be able to tell in one glance that nothing is wrong.
+ */
+function testNotification(at: number, by: string): Notification {
+  return {
+    kind: 'fired',
+    alert: {
+      id: 'notification-test',
+      rule: 'notification-test',
+      subject: 'kubitor',
+      severity: 'warning',
+      summary: 'Test message from kubitor',
+      detail: `Sent by ${by} from Settings. Nothing is wrong.`,
+      state: 'firing',
+      seenCount: 1,
+      missingCount: 0,
+      firstSeenAt: at,
+      lastSeenAt: at,
+      firedAt: at,
+      resolvedAt: null,
+      attrs: {},
+    },
+  };
 }

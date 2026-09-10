@@ -187,6 +187,13 @@ export interface Config {
   cookieSecure: boolean;
   /** Absent unless an age identity was given; see `KUBITOR_SETTINGS_KEY`. */
   settingsKey?: string;
+  /**
+   * The age identity that opens a backup, straight from the environment.
+   *
+   * Never from the database: restoring the database needs the backup, which
+   * needs this key, which would be inside the database being restored.
+   */
+  backupAgeIdentity?: string;
   /** Absent unless a bucket is named, which is what turns backups on. */
   backup?: BackupConfig;
   /** Always present; it just may name no channel at all. */
@@ -250,6 +257,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     trustedProxyHeader: value.KUBITOR_TRUSTED_PROXY_HEADER,
     cookieSecure: value.KUBITOR_COOKIE_SECURE,
     ...(value.KUBITOR_SETTINGS_KEY ? { settingsKey: value.KUBITOR_SETTINGS_KEY } : {}),
+    ...(value.KUBITOR_BACKUP_AGE_IDENTITY
+      ? { backupAgeIdentity: value.KUBITOR_BACKUP_AGE_IDENTITY }
+      : {}),
     notify: {
       ...(value.KUBITOR_NOTIFY_DISCORD_WEBHOOK
         ? { discordWebhook: value.KUBITOR_NOTIFY_DISCORD_WEBHOOK }

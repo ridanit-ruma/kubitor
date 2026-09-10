@@ -26,14 +26,18 @@ import { NodeSamplesRepo } from '../db/node-samples.repo.js';
 import { NotificationsRepo } from '../db/notifications.repo.js';
 import type { Database } from '../db/schema.js';
 import { SessionsRepo } from '../db/sessions.repo.js';
+import { SettingsRepo } from '../db/settings.repo.js';
 import { HealthService } from '../health.service.js';
 import { Dispatcher } from '../notify/dispatcher.js';
+import { channelSource } from '../notify/source.js';
 import { CapabilitiesService } from '../plugins/capabilities.service.js';
 import type { IntegrationModule } from '../plugins/contract.js';
 import { DetectionService } from '../plugins/detection.service.js';
 import { IngestPipeline } from '../plugins/ingest.js';
 import { IntegrationRegistry } from '../plugins/registry.js';
 import { FacetQuery } from '../query/facet-query.js';
+import { sealerFor } from '../settings/secrets.js';
+import { SettingsService } from '../settings/service.js';
 import { type FakeClusterState, fakeProbes } from './fake-probes.js';
 
 export interface TestApp {
@@ -52,6 +56,7 @@ export interface TestApp {
   agentTokens: AgentTokensRepo;
   hostIngest: HostIngest;
   config: Config;
+  settings: SettingsService;
   close(): Promise<void>;
 }
 
@@ -113,9 +118,16 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const pipeline = new IngestPipeline(db, SQLITE_SQL);
   const agentTokens = new AgentTokensRepo(db);
   const agents = new AgentsService(agentTokens);
+  const settings = await SettingsService.load({
+    repo: new SettingsRepo(db, SQLITE_SQL),
+    sealer: sealerFor(config.settingsKey),
+    seed: { notify: config.notify, backup: config.backup ?? null },
+    ...(config.backupAgeIdentity === undefined ? {} : { ageIdentity: config.backupAgeIdentity }),
+    now: () => Date.now(),
+  });
   const notifications = new NotificationsRepo(db);
   const dispatcher = new Dispatcher({
-    channels: [],
+    channels: channelSource(() => settings.notify),
     notifications,
     alerts: new AlertsRepo(db, SQLITE_SQL),
     deps: { fetch: globalThis.fetch, baseUrl: null },
@@ -190,6 +202,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     agentTokens,
     hostIngest,
     config,
+    settings,
     async close() {
       await app.close();
       await db.destroy();

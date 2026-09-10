@@ -28,6 +28,7 @@ import { NodeSamplesRepo } from './db/node-samples.repo.js';
 import { NotificationsRepo } from './db/notifications.repo.js';
 import { sweepRetention } from './db/retention.js';
 import { SessionsRepo } from './db/sessions.repo.js';
+import { SettingsRepo } from './db/settings.repo.js';
 import { TABLES } from './db/tables.js';
 import { HealthService } from './health.service.js';
 import { LiveGateway } from './http/ws.gateway.js';
@@ -36,9 +37,9 @@ import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
 import { clusterJwksReader, ownNamespace, ServiceAccountVerifier } from './kube/sa-token.js';
-import { channelsFrom } from './notify/build.js';
 import { Dispatcher } from './notify/dispatcher.js';
 import { Heartbeat } from './notify/heartbeat.js';
+import { channelSource } from './notify/source.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
 import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
 import { INTEGRATIONS } from './plugins/index.js';
@@ -46,6 +47,8 @@ import { IngestPipeline } from './plugins/ingest.js';
 import { unavailableProbes } from './plugins/probes/unavailable.js';
 import { IntegrationRegistry } from './plugins/registry.js';
 import { FacetQuery } from './query/facet-query.js';
+import { sealerFor } from './settings/secrets.js';
+import { SettingsService } from './settings/service.js';
 
 const BOOTSTRAP_USERNAME = 'admin';
 /** Pruning runs often enough that a burst cannot outrun it. */
@@ -78,6 +81,25 @@ async function bootstrap(): Promise<void> {
   const accountsRepo = new AccountsRepo(db);
   const sessionsRepo = new SessionsRepo(db);
   const eventsRepo = new AccountEventsRepo(db, dialect);
+
+  // What the dashboard can edit. The environment seeds these documents once, on
+  // the boot that finds them missing, and is ignored from then on.
+  const settings = await SettingsService.load({
+    repo: new SettingsRepo(db, dialect),
+    sealer: sealerFor(config.settingsKey),
+    seed: { notify: config.notify, backup: config.backup ?? null },
+    ...(config.backupAgeIdentity === undefined ? {} : { ageIdentity: config.backupAgeIdentity }),
+    now: () => Date.now(),
+    log: (message) => logger.warn(message),
+  });
+
+  if (!settings.canStoreSecrets) {
+    logger.warn(
+      'No KUBITOR_SETTINGS_KEY is set. Settings can be read and edited, but a new webhook, token or secret key cannot be stored. Generate one with age-keygen.',
+    );
+  }
+
+  const channels = channelSource(() => settings.notify);
 
   const auth = new AuthService({
     accounts: accountsRepo,
@@ -251,7 +273,7 @@ async function bootstrap(): Promise<void> {
   // able to slow the loop that notices things are broken.
   const notifications = new NotificationsRepo(db);
   const dispatcher = new Dispatcher({
-    channels: channelsFrom(config.notify),
+    channels,
     notifications,
     alerts: alertRecords,
     deps: { fetch: globalThis.fetch, baseUrl: config.publicUrl ?? null },
@@ -387,10 +409,12 @@ async function bootstrap(): Promise<void> {
   if (heartbeat.enabled) logger.log(`Heartbeat to ${config.heartbeat?.url}`);
   if (dispatcher.configured) {
     logger.log(
-      `Notifying ${channelsFrom(config.notify)
+      `Notifying ${channels()
         .map((c) => c.channel.id)
         .join(', ')}`,
     );
+  } else {
+    logger.log('No notification channel is configured. Add one under Settings.');
   }
 
   if (backup) {

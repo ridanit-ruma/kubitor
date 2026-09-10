@@ -66,11 +66,13 @@ describeEachDialect('Dispatcher', (ctx) => {
     bindings: { channel: Channel; minimumSeverity?: 'critical' | 'warning' }[],
     now: () => number = () => NOW,
   ) {
+    const resolved = bindings.map((each) => ({
+      channel: each.channel,
+      minimumSeverity: each.minimumSeverity ?? 'warning',
+    }));
+
     return new Dispatcher({
-      channels: bindings.map((each) => ({
-        channel: each.channel,
-        minimumSeverity: each.minimumSeverity ?? 'warning',
-      })),
+      channels: () => resolved,
       notifications,
       alerts,
       deps: { fetch: globalThis.fetch, baseUrl: 'https://kubitor.example.com' },
@@ -227,6 +229,70 @@ describeEachDialect('Dispatcher', (ctx) => {
 
     expect(dispatch.configured).toBe(false);
     await dispatch.enqueue([{ kind: 'fired', alert: record }]);
+
+    expect(await notifications.pendingCount()).toBe(0);
+  });
+
+  /**
+   * A server that booted with no channel must still deliver once one is added,
+   * or "no restart" is not true. The drain timer therefore runs unconditionally.
+   */
+  it('starts its timer even with nothing configured', () => {
+    const dispatch = dispatcher([]);
+
+    dispatch.start();
+    expect(() => dispatch.stop()).not.toThrow();
+  });
+
+  it('sends a test message to one named channel', async () => {
+    const target = recording();
+    const dispatch = dispatcher([{ channel: target.channel }]);
+
+    expect(await dispatch.test(target.channel.id, 'admin')).toEqual({ ok: true });
+    expect(target.sent).toHaveLength(1);
+  });
+
+  it('says plainly in the message that it is a test, and who asked for it', async () => {
+    const target = recording();
+    const dispatch = dispatcher([{ channel: target.channel }]);
+
+    await dispatch.test(target.channel.id, 'admin');
+
+    expect(target.sent[0]?.alert.summary).toContain('Test');
+    expect(target.sent[0]?.alert.detail).toContain('admin');
+  });
+
+  it('reports a channel that is not configured rather than pretending it sent', async () => {
+    expect(await dispatcher([]).test('discord', 'admin')).toEqual({
+      ok: false,
+      error: expect.stringContaining('not configured'),
+    });
+  });
+
+  /**
+   * The whole reason the button exists: a webhook that is wrong fails silently
+   * at 3am, and a form with no way to prove it works is a form nobody trusts.
+   */
+  it('reports the failure instead of throwing', async () => {
+    const failing: Channel = {
+      id: 'discord',
+      title: 'Discord',
+      async send() {
+        throw new Error('Discord answered 401');
+      },
+    };
+
+    expect(await dispatcher([{ channel: failing }]).test('discord', 'admin')).toEqual({
+      ok: false,
+      error: 'Discord answered 401',
+    });
+  });
+
+  it('queues nothing to a test message, so the alerts screen stays about real alerts', async () => {
+    const target = recording();
+    const dispatch = dispatcher([{ channel: target.channel }]);
+
+    await dispatch.test(target.channel.id, 'admin');
 
     expect(await notifications.pendingCount()).toBe(0);
   });
