@@ -59,7 +59,7 @@ describe('toNotifyView', () => {
  * form could erase a webhook, nobody would open the form.
  */
 describe('the round trip', () => {
-  it('changes nothing when the view is sent straight back', async () => {
+  it('changes nothing when the notify view is sent straight back', async () => {
     const current = await withDiscord('https://discord.com/api/webhooks/1/abc');
     const { canStoreSecrets: _ignored, ...input } = toNotifyView(current, true);
 
@@ -67,6 +67,30 @@ describe('the round trip', () => {
 
     expect(changed).toEqual([]);
     expect(document.discord?.webhookUrl).toEqual(current.discord?.webhookUrl);
+  });
+
+  it('changes nothing when the backup view is sent straight back', async () => {
+    const current = {
+      ...EMPTY_BACKUP,
+      schedule: '5 4 * * *',
+      destination: {
+        endpoint: 'https://s3.example.com',
+        bucket: 'b',
+        prefix: '',
+        region: 'us-east-1',
+        accessKey: 'AKIA',
+        secretKey: await sealer.seal('s3cr3t'),
+      },
+    };
+    const { canStoreSecrets: _ignored, ...input } = toBackupView(current, true);
+
+    const { document, changed } = await mergeBackup(input, current, sealer);
+
+    expect(changed).toEqual([]);
+    // The ciphertext identity, not merely that a secret is still present:
+    // without this the test would pass even if the secret had been
+    // re-sealed or replaced.
+    expect(document.destination?.secretKey).toEqual(current.destination?.secretKey);
   });
 });
 
@@ -214,6 +238,28 @@ describe('mergeBackup', () => {
         sealer,
       ),
     ).rejects.toThrow(SettingsInvalid);
+  });
+
+  it('refuses a new destination submitted with no bucket, naming the field', async () => {
+    const { canStoreSecrets: _ignored, ...input } = toBackupView(EMPTY_BACKUP, true);
+
+    await expect(
+      mergeBackup(
+        {
+          ...input,
+          destination: {
+            endpoint: 'https://s3.example.com',
+            bucket: '',
+            prefix: '',
+            region: 'us-east-1',
+            accessKey: 'AKIA',
+            secretKey: 's3cr3t',
+          },
+        },
+        EMPTY_BACKUP,
+        sealer,
+      ),
+    ).rejects.toMatchObject({ field: 'destination.bucket' });
   });
 });
 

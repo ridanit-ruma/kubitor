@@ -243,11 +243,22 @@ export async function mergeBackup(
   if (input.ageRecipient !== (current.ageRecipient ?? '')) changed.push('ageRecipient');
 
   // The bucket is the one identifying field of a destination — as with a
-  // single-field channel like discord's webhookUrl, clearing it clears the
-  // whole thing. With a bucket present the rest of the fields are required,
-  // so a half-filled destination becomes a 400 naming what is missing rather
-  // than a save that quietly runs against the wrong endpoint.
-  const named = Boolean(bucket);
+  // single-field channel like discord's webhookUrl, its presence decides
+  // whether the destination is on. Three cases:
+  //  - bucket given: the destination is named; validate it as a unit, so a
+  //    half-filled one becomes a 400 naming what is missing rather than a
+  //    save that quietly runs against the wrong endpoint.
+  //  - bucket empty, a destination was stored: a deliberate clear; drop it.
+  //  - bucket empty, nothing stored: if some other field was given anyway,
+  //    name the destination regardless, so `BACKUP_DOCUMENT`'s
+  //    `bucket: z.string().min(1)` rejects it with `field: 'destination.bucket'`
+  //    instead of silently discarding the other fields while `changed` still
+  //    lists them as if they had been stored.
+  const named = bucket
+    ? true
+    : stored !== undefined
+      ? false
+      : Boolean(endpoint || region || accessKey || secretKey.value);
 
   const candidate: Record<string, unknown> = {
     version: 1,
