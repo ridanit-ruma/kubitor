@@ -31,6 +31,17 @@ const schema = z
       .default('true')
       .transform((value) => value === 'true'),
 
+    /**
+     * An age identity (`AGE-SECRET-KEY-1...`) that encrypts the secret-bearing
+     * fields of the settings documents.
+     *
+     * In the environment and not in the database for the obvious reason: it is
+     * what opens the database's own secrets. Absent, kubitor reads settings
+     * that were stored in the clear but refuses to write a new secret, and the
+     * dashboard says why. Generate one with `age-keygen`.
+     */
+    KUBITOR_SETTINGS_KEY: z.string().min(1).optional(),
+
     /* Backup. Off entirely unless a bucket is named. */
     KUBITOR_BACKUP_S3_ENDPOINT: z.string().url().optional(),
     KUBITOR_BACKUP_S3_BUCKET: z.string().min(1).optional(),
@@ -174,6 +185,8 @@ export interface Config {
   /** Header the ingress sets with the real client address. */
   trustedProxyHeader: string;
   cookieSecure: boolean;
+  /** Absent unless an age identity was given; see `KUBITOR_SETTINGS_KEY`. */
+  settingsKey?: string;
   /** Absent unless a bucket is named, which is what turns backups on. */
   backup?: BackupConfig;
   /** Always present; it just may name no channel at all. */
@@ -236,6 +249,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       : {}),
     trustedProxyHeader: value.KUBITOR_TRUSTED_PROXY_HEADER,
     cookieSecure: value.KUBITOR_COOKIE_SECURE,
+    ...(value.KUBITOR_SETTINGS_KEY ? { settingsKey: value.KUBITOR_SETTINGS_KEY } : {}),
     notify: {
       ...(value.KUBITOR_NOTIFY_DISCORD_WEBHOOK
         ? { discordWebhook: value.KUBITOR_NOTIFY_DISCORD_WEBHOOK }
