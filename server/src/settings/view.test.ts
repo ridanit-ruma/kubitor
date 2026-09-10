@@ -2,7 +2,7 @@ import { SECRET_KEPT } from '@kubitor/shared';
 import { generateIdentity } from 'age-encryption';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_BACKUP, EMPTY_NOTIFY, type NotifyDocument } from './documents.js';
-import { plaintextSealer, type Sealer, SettingsKeyMissing, ageSealer } from './secrets.js';
+import { ageSealer, plaintextSealer, type Sealer, SettingsKeyMissing } from './secrets.js';
 import {
   BACKUP_INPUT,
   mergeBackup,
@@ -82,7 +82,8 @@ describe('mergeNotify', () => {
     );
 
     expect(changed).toEqual(['discord.webhookUrl']);
-    expect(await sealer.open(document.discord!.webhookUrl)).toBe(
+    if (!document.discord) throw new Error('expected the discord channel to still be set');
+    expect(await sealer.open(document.discord.webhookUrl)).toBe(
       'https://discord.com/api/webhooks/2/new',
     );
   });

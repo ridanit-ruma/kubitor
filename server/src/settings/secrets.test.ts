@@ -1,6 +1,6 @@
 import { generateIdentity } from 'age-encryption';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ageSealer, plaintextSealer, sealerFor, SettingsKeyMissing, unsealed } from './secrets.js';
+import { ageSealer, plaintextSealer, SettingsKeyMissing, sealerFor, unsealed } from './secrets.js';
 
 let identity: string;
 

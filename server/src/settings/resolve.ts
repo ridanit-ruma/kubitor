@@ -101,7 +101,9 @@ function opener(
     try {
       return await sealer.open(sealed);
     } catch (error) {
-      log?.(`Settings field "${field}" could not be decrypted and is being ignored: ${String(error)}`);
+      log?.(
+        `Settings field "${field}" could not be decrypted and is being ignored: ${String(error)}`,
+      );
       return undefined;
     }
   };

@@ -33,9 +33,9 @@ describe('NOTIFY_DOCUMENT', () => {
   });
 
   it('refuses a half-configured Telegram, which sends nothing and says nothing', () => {
-    expect(NOTIFY_DOCUMENT.safeParse({ ...EMPTY_NOTIFY, telegram: { token: sealed } }).success).toBe(
-      false,
-    );
+    expect(
+      NOTIFY_DOCUMENT.safeParse({ ...EMPTY_NOTIFY, telegram: { token: sealed } }).success,
+    ).toBe(false);
   });
 
   it('refuses an ntfy server that is not a URL', () => {

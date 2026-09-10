@@ -1,5 +1,5 @@
-import { type BackupInput, type NotifyInput, SECRET_KEPT } from '@kubitor/shared';
 import type { BackupView, NotifyView } from '@kubitor/shared';
+import { type BackupInput, type NotifyInput, SECRET_KEPT } from '@kubitor/shared';
 import { z } from 'zod';
 import { parseCron } from '../backup/cron.js';
 import {
@@ -150,10 +150,20 @@ export async function mergeNotify(
   const gotifyToken = note('gotify.token', gotify);
   const smtpUrl = note('smtp.url', smtp);
 
-  const chatId = plainField(input.telegram.chatId, current.telegram?.chatId, changed, 'telegram.chatId');
+  const chatId = plainField(
+    input.telegram.chatId,
+    current.telegram?.chatId,
+    changed,
+    'telegram.chatId',
+  );
   const ntfyServer = plainField(input.ntfy.server, current.ntfy?.server, changed, 'ntfy.server');
   const ntfyTopic = plainField(input.ntfy.topic, current.ntfy?.topic, changed, 'ntfy.topic');
-  const gotifyServer = plainField(input.gotify.server, current.gotify?.server, changed, 'gotify.server');
+  const gotifyServer = plainField(
+    input.gotify.server,
+    current.gotify?.server,
+    changed,
+    'gotify.server',
+  );
   const smtpFrom = plainField(input.smtp.from, current.smtp?.from, changed, 'smtp.from');
   const smtpTo = plainField(input.smtp.to, current.smtp?.to, changed, 'smtp.to');
 
@@ -178,7 +188,9 @@ export async function mergeNotify(
           },
         }
       : {}),
-    ...(gotifyServer || gotifyToken ? { gotify: { server: gotifyServer, token: gotifyToken } } : {}),
+    ...(gotifyServer || gotifyToken
+      ? { gotify: { server: gotifyServer, token: gotifyToken } }
+      : {}),
     ...(smtpUrl || smtpFrom || smtpTo
       ? { smtp: { url: smtpUrl, from: smtpFrom, to: smtpTo } }
       : {}),
@@ -211,11 +223,21 @@ export async function mergeBackup(
 
   const destination = input.destination;
   const stored = current.destination;
-  const endpoint = plainField(destination.endpoint, stored?.endpoint, changed, 'destination.endpoint');
+  const endpoint = plainField(
+    destination.endpoint,
+    stored?.endpoint,
+    changed,
+    'destination.endpoint',
+  );
   const bucket = plainField(destination.bucket, stored?.bucket, changed, 'destination.bucket');
   const prefix = plainField(destination.prefix, stored?.prefix, changed, 'destination.prefix');
   const region = plainField(destination.region, stored?.region, changed, 'destination.region');
-  const accessKey = plainField(destination.accessKey, stored?.accessKey, changed, 'destination.accessKey');
+  const accessKey = plainField(
+    destination.accessKey,
+    stored?.accessKey,
+    changed,
+    'destination.accessKey',
+  );
 
   if (input.schedule !== current.schedule) changed.push('schedule');
   if (input.ageRecipient !== (current.ageRecipient ?? '')) changed.push('ageRecipient');
