@@ -1,10 +1,10 @@
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { AlertsRepo } from '../db/alerts.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
 import { NotificationsRepo } from '../db/notifications.repo.js';
 import { describeEachDialect } from '../test/db-harness.js';
 import type { Channel, Notification } from './channel.js';
-import { backoffMs, Dispatcher, MAX_ATTEMPTS } from './dispatcher.js';
+import { backoffMs, Dispatcher, DRAIN_INTERVAL_MS, MAX_ATTEMPTS } from './dispatcher.js';
 
 const NOW = 1_756_800_000_000;
 
@@ -237,11 +237,43 @@ describeEachDialect('Dispatcher', (ctx) => {
    * A server that booted with no channel must still deliver once one is added,
    * or "no restart" is not true. The drain timer therefore runs unconditionally.
    */
-  it('starts its timer even with nothing configured', () => {
-    const dispatch = dispatcher([]);
+  /**
+   * The behavioural claim behind the unconditional `start()`: a server that
+   * booted with no channel must still deliver once one is added from the
+   * dashboard, with no restart. Driving this through the real interval — not a
+   * direct `drain()` call — is the point: a timer that was never armed because
+   * nothing was configured yet would leave this hanging forever.
+   */
+  it('delivers to a channel added after start, once the drain timer fires', async () => {
+    const target = recording();
+    const record = await alert('ken');
+    let bindings: { channel: Channel; minimumSeverity: 'critical' | 'warning' }[] = [];
 
-    dispatch.start();
-    expect(() => dispatch.stop()).not.toThrow();
+    const dispatch = new Dispatcher({
+      channels: () => bindings,
+      notifications,
+      alerts,
+      deps: { fetch: globalThis.fetch, baseUrl: 'https://kubitor.example.com' },
+      now: () => NOW,
+    });
+
+    vi.useFakeTimers();
+    try {
+      // Booted with nothing configured.
+      dispatch.start();
+
+      // The dashboard adds a channel to a server that is already running.
+      bindings = [{ channel: target.channel, minimumSeverity: 'warning' }];
+      await dispatch.enqueue([{ kind: 'fired', alert: record }]);
+
+      // Let the drain timer itself fire, rather than calling drain() directly.
+      await vi.advanceTimersByTimeAsync(DRAIN_INTERVAL_MS);
+
+      expect(target.sent).toHaveLength(1);
+    } finally {
+      dispatch.stop();
+      vi.useRealTimers();
+    }
   });
 
   it('sends a test message to one named channel', async () => {
