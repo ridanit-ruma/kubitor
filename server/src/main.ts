@@ -99,6 +99,23 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  // Said plainly, and at the moment it is true. The upgrade that introduced
+  // `KUBITOR_SETTINGS_KEY` seeds these documents from an environment that
+  // cannot have had one, so the first boot after it writes secrets to the
+  // database in the clear — including, for an existing backup user, the S3
+  // secret key, into the file that is then uploaded to that same bucket.
+  const plaintext = settings.plaintextSecrets;
+  if (plaintext.length > 0) {
+    logger.warn(
+      `These settings are stored in the database unencrypted, because no KUBITOR_SETTINGS_KEY was set when they were written: ${plaintext.join(', ')}. Set one with age-keygen and save each field again to encrypt it.`,
+    );
+    if (settings.backupSecretInTheClear) {
+      logger.warn(
+        "The bucket's own secret key is one of them, so an unencrypted backup in that bucket carries the credentials to it. Set an age recipient under Settings -> Backups, or a KUBITOR_SETTINGS_KEY, or both.",
+      );
+    }
+  }
+
   const channels = channelSource(() => settings.notify);
 
   const auth = new AuthService({

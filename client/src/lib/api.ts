@@ -231,6 +231,11 @@ export type BackupStatus =
       endpoint: string;
       /** `write-only` means kubitor cannot read back what it wrote. */
       encryption: 'none' | 'write-only' | 'readable';
+      /**
+       * Whether this bucket's own secret key is stored unencrypted in the
+       * database — which is the file being uploaded to it.
+       */
+      secretsInTheClear: boolean;
       schedule: string;
       nextRunAt: number | null;
       newestVerifiedAt: number | null;

@@ -340,6 +340,16 @@ with the database, from a backup. That is a deliberate trade: re-entering a
 webhook URL costs minutes, where a lost session secret or age identity costs the
 installation.
 
+It also means the secrets are in the file that gets uploaded to your bucket. On
+the first boot of this version, an existing deployment has no
+`KUBITOR_SETTINGS_KEY` — the variable is new — so the values seeded out of your
+`KUBITOR_NOTIFY_*` and `KUBITOR_BACKUP_*` variables are written to the database
+**in the clear**, and the boot log names each one. With no age recipient either,
+the backup sitting in the bucket therefore contains the credentials to that
+bucket. Set `KUBITOR_SETTINGS_KEY` before you upgrade, or set it afterwards and
+save each field again; the Backups screen says plainly when this is the state you
+are in.
+
 ## SSH sessions
 
 **Off in every agent until you turn it on.** This is a feature people are

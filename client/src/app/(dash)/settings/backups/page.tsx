@@ -35,7 +35,7 @@ const ENCRYPTION: Record<string, { label: string; detail: string }> = {
   none: {
     label: 'Not encrypted here',
     detail:
-      'Anyone who can read the bucket can read the database. Set KUBITOR_BACKUP_AGE_RECIPIENT, or turn on the bucket\u2019s own encryption.',
+      'Anyone who can read the bucket can read the database. Add an age recipient under Edit destination, or turn on the bucket\u2019s own encryption.',
   },
   'write-only': {
     label: 'Encrypted, unreadable here',
@@ -122,6 +122,8 @@ export default function BackupsPage() {
             {ENCRYPTION[status.encryption]?.detail}
           </p>
 
+          {status.encryption === 'none' && status.secretsInTheClear && <CredentialsInBucket />}
+
           <div className="pane rounded-lg border border-line">
             <Table className="table-fixed">
               <TableHeader className="sticky top-0 z-10 bg-card">
@@ -205,6 +207,34 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
         {label}
       </span>
       {children}
+    </div>
+  );
+}
+
+/**
+ * The one state where a backup is worse than no backup.
+ *
+ * Unencrypted backups and an unencrypted secret key are each survivable alone.
+ * Together they mean the object in the bucket contains the credentials to that
+ * bucket, and the loop closes on itself. Severity colour, because severity is
+ * what this is.
+ */
+function CredentialsInBucket() {
+  return (
+    <div className="max-w-3xl space-y-2 rounded-lg border border-bad/40 bg-bad/5 p-4">
+      <p className="text-sm font-medium text-bad">
+        This bucket’s own credentials are inside the backups it holds.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        The secret access key is stored unencrypted in the database, and the database is what gets
+        uploaded here — so anyone who can read the bucket can read the key to it.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Add an age recipient under <strong>Edit destination</strong> to encrypt what is uploaded. To
+        stop storing the key in the clear as well, set{' '}
+        <code className="font-mono text-xs">KUBITOR_SETTINGS_KEY</code> and save the destination
+        again.
+      </p>
     </div>
   );
 }

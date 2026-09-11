@@ -211,6 +211,52 @@ describeEachDialect('SettingsService', (ctx) => {
     expect(changed.toSorted()).toEqual(['discord.webhookUrl', 'minimumSeverity']);
     expect(changed.join()).not.toContain('hunter2');
   });
+
+  /**
+   * The boot log used to say a secret "cannot be stored" at the exact moment
+   * several had been, in the clear — which is what happens to every deployment
+   * upgrading into this feature, because `KUBITOR_SETTINGS_KEY` did not exist
+   * before it. Naming the fields is what makes the warning actionable.
+   */
+  it('names the fields it is holding unencrypted', async () => {
+    const settings = await load(
+      {
+        notify: {
+          slackWebhook: 'https://hooks.slack.com/services/x',
+          telegram: { token: '123:ABC', chatId: '-1001' },
+          minimumSeverity: 'warning',
+        },
+        backup: {
+          endpoint: 'https://s3.example.com',
+          bucket: 'kubitor-backups',
+          prefix: '',
+          accessKey: 'AKIA',
+          secretKey: 's3cr3t',
+          region: 'us-east-1',
+          schedule: '17 3 * * *',
+        },
+      },
+      { sealer: plaintextSealer() },
+    );
+
+    expect(settings.plaintextSecrets.toSorted()).toEqual([
+      'backup.destination.secretKey',
+      'notify.slack.webhookUrl',
+      'notify.telegram.token',
+    ]);
+    expect(settings.backupSecretInTheClear).toBe(true);
+    expect(settings.plaintextSecrets.join()).not.toContain('s3cr3t');
+  });
+
+  it('holds nothing unencrypted once there is a key to seal with', async () => {
+    const settings = await load({
+      notify: { slackWebhook: 'https://hooks.slack.com/services/x', minimumSeverity: 'warning' },
+      backup: null,
+    });
+
+    expect(settings.plaintextSecrets).toEqual([]);
+    expect(settings.backupSecretInTheClear).toBe(false);
+  });
 });
 
 function withoutFlag<T extends { canStoreSecrets: boolean }>(view: T): Omit<T, 'canStoreSecrets'> {

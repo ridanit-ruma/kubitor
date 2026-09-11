@@ -105,6 +105,43 @@ export class SettingsService {
     return this.#deps.sealer.canSeal;
   }
 
+  /**
+   * The secret-bearing fields sitting in the database unencrypted, by name.
+   *
+   * Not a curiosity. A deployment upgrading into this feature has no
+   * `KUBITOR_SETTINGS_KEY` — the variable did not exist before it — so the
+   * seed wrote every value the environment carried in the clear, on one boot,
+   * without asking. The boot log says which, and the Backups screen says what
+   * it means for the bucket.
+   */
+  get plaintextSecrets(): readonly string[] {
+    return [
+      ...inTheClear('notify', {
+        'discord.webhookUrl': this.#notifyDocument.discord?.webhookUrl,
+        'slack.webhookUrl': this.#notifyDocument.slack?.webhookUrl,
+        'webhook.url': this.#notifyDocument.webhook?.url,
+        'telegram.token': this.#notifyDocument.telegram?.token,
+        'ntfy.token': this.#notifyDocument.ntfy?.token,
+        'gotify.token': this.#notifyDocument.gotify?.token,
+        'smtp.url': this.#notifyDocument.smtp?.url,
+      }),
+      ...inTheClear('backup', {
+        'destination.secretKey': this.#backupDocument.destination?.secretKey,
+      }),
+    ];
+  }
+
+  /**
+   * Whether the bucket's own secret key is one of them.
+   *
+   * The circularity this exists to make visible: an unencrypted backup of a
+   * database holding this key is a copy of the credentials to the bucket it
+   * was uploaded to.
+   */
+  get backupSecretInTheClear(): boolean {
+    return this.#backupDocument.destination?.secretKey.cipher === 'none';
+  }
+
   notifyView(): NotifyView {
     return toNotifyView(this.#notifyDocument, this.canStoreSecrets);
   }
@@ -164,6 +201,13 @@ async function read<T>(
   }
 
   return parse(raw) ?? empty;
+}
+
+/** The names of the given fields whose stored value is not encrypted. */
+function inTheClear(document: string, fields: Record<string, Sealed | undefined>): string[] {
+  return Object.entries(fields)
+    .filter(([, sealed]) => sealed?.cipher === 'none')
+    .map(([name]) => `${document}.${name}`);
 }
 
 /** Sealing where possible; in the clear where the value already was. */
