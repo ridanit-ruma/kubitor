@@ -148,19 +148,16 @@ async function bootstrap(): Promise<void> {
   const agentTokens = new AgentTokensRepo(db);
   const agents = new AgentsService(agentTokens);
 
-  // Off unless a bucket is named. A configured backup starts its schedule once
-  // the server is listening, not here — nothing should run before the process
-  // is able to serve.
+  // Always constructed: the destination lives in the database now, so a server
+  // that boots with none must still be able to acquire one without a restart.
   const backupRecords = new BackupsRepo(db);
-  const backup = config.backup
-    ? new BackupRunner({
-        config: config.backup,
-        db,
-        records: backupRecords,
-        now: () => new Date(),
-        log: (message) => logger.log(message),
-      })
-    : null;
+  const backup = new BackupRunner({
+    config: () => settings.backup,
+    db,
+    records: backupRecords,
+    now: () => new Date(),
+    log: (message) => logger.log(message),
+  });
   const nodeNames = async (): Promise<string[]> =>
     kube ? (await kube.listNodes()).map((node) => node.name) : [];
 
@@ -284,7 +281,7 @@ async function bootstrap(): Promise<void> {
   const alerts = new AlertsService({
     db,
     alerts: alertRecords,
-    backups: config.backup ? backupRecords : null,
+    backups: () => (settings.backup ? backupRecords : null),
     staleAgents,
     now: () => Date.now(),
     log: (message) => logger.log(message),
@@ -388,7 +385,7 @@ async function bootstrap(): Promise<void> {
     clearInterval(detectionTimer);
     clearInterval(retentionTimer);
     scheduler.stop();
-    backup?.stop();
+    backup.stop();
     alerts.stop();
     dispatcher.stop();
     heartbeat.stop();
@@ -417,9 +414,11 @@ async function bootstrap(): Promise<void> {
     logger.log('No notification channel is configured. Add one under Settings.');
   }
 
-  if (backup) {
-    backup.start();
-    logger.log(`Backups to ${config.backup?.bucket} on "${config.backup?.schedule}"`);
+  backup.start();
+  if (settings.backup) {
+    logger.log(`Backups to ${settings.backup.bucket} on "${settings.backup.schedule}"`);
+  } else {
+    logger.log('No backup destination is configured. Add one under Settings.');
   }
 }
 

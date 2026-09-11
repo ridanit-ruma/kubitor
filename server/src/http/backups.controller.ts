@@ -55,7 +55,9 @@ export class BackupsController {
       throw new ForbiddenException({ error: 'reauthentication_failed' });
     }
 
-    if (!this.#runner) throw new BadRequestException({ error: 'backup_not_configured' });
+    if (!this.#runner?.configured) {
+      throw new BadRequestException({ error: 'backup_not_configured' });
+    }
     return this.#runner.runNow();
   }
 }

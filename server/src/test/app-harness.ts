@@ -136,7 +136,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const alerts = new AlertsService({
     db,
     alerts: new AlertsRepo(db, SQLITE_SQL),
-    backups: null,
+    backups: () => null,
     staleAgents: async () => [],
     now: () => Date.now(),
   });
