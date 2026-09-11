@@ -361,6 +361,8 @@ async function bootstrap(): Promise<void> {
       dispatcher,
       hostIngest,
       saVerifier,
+      settings,
+      events: eventsRepo,
     }),
   );
 

@@ -52,7 +52,8 @@ export type AccountAction =
   | 'create'
   | 'reset_password'
   | 'delete'
-  | 'set_role';
+  | 'set_role'
+  | 'settings_change';
 
 export interface AccountEventsTable {
   at: number;

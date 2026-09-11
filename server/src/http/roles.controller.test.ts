@@ -39,6 +39,8 @@ describe('what a viewer cannot do', () => {
     ['GET', '/api/accounts'],
     ['GET', '/api/agents'],
     ['GET', '/api/backups'],
+    ['GET', '/api/settings/notify'],
+    ['GET', '/api/settings/backup'],
   ] as const;
 
   it.each(forbidden)('is refused %s %s', async (method, path) => {

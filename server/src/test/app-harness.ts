@@ -179,6 +179,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         // No cluster here, so no projected token can be verified: the harness
         // exercises the static-token path, as an out-of-cluster agent would.
         saVerifier: null,
+        settings,
+        events,
       }),
     ],
   }).compile();

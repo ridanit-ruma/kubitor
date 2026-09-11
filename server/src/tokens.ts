@@ -26,3 +26,7 @@ export const BACKUP_RUNNER = Symbol('kubitor.backupRunner');
 export const ALERTS_SERVICE = Symbol('kubitor.alertsService');
 export const NOTIFICATIONS_REPO = Symbol('kubitor.notificationsRepo');
 export const DISPATCHER = Symbol('kubitor.dispatcher');
+/** The settings the dashboard can edit, already loaded. */
+export const SETTINGS_SERVICE = Symbol('kubitor.settingsService');
+/** The audit trail, for the routes that have to leave a record. */
+export const ACCOUNT_EVENTS = Symbol('kubitor.accountEvents');

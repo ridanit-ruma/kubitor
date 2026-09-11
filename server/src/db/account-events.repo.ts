@@ -6,7 +6,7 @@ export interface AccountEvent {
   at: number;
   actorId: string | null;
   action: AccountAction;
-  /** Username the action was taken against. */
+  /** Username the action was taken against, or the document that changed. */
   subject: string;
   detail: Record<string, unknown>;
 }
