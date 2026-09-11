@@ -404,6 +404,7 @@ credentials and hold a bucket's keys.
 | Turning integrations on and off | yes | yes | — |
 | Agent credentials | yes | — | — |
 | Backups and their bucket | yes | — | — |
+| Notification channels and their webhooks | yes | — | — |
 | Accounts and roles | yes | — | — |
 
 The line that matters is between running the cluster and holding the
