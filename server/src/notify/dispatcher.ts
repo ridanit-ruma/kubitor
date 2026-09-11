@@ -2,7 +2,13 @@ import type { Transition } from '../alerts/evaluator.js';
 import type { Severity } from '../alerts/rule.js';
 import type { AlertsRepo } from '../db/alerts.repo.js';
 import type { NotificationsRepo } from '../db/notifications.repo.js';
-import { atLeast, type Channel, type ChannelDeps, type Notification } from './channel.js';
+import {
+  atLeast,
+  type Channel,
+  type ChannelDeps,
+  ChannelResponseError,
+  type Notification,
+} from './channel.js';
 
 /** How often the queue is drained. Fast enough to feel immediate. */
 export const DRAIN_INTERVAL_MS = 10_000;
@@ -20,6 +26,18 @@ export const MAX_ATTEMPTS = 6;
 /** Exponential, capped, so a long outage does not become a busy loop. */
 export function backoffMs(attempts: number): number {
   return Math.min(5_000 * 2 ** (attempts - 1), 300_000);
+}
+
+/**
+ * What a failure may say outside this process.
+ *
+ * Anything else is reduced to a shape. A remote's response body can quote the
+ * request path, and a header the platform refuses to build quotes the header
+ * value — which for ntfy is the token. The full message still goes to the log.
+ */
+function safeReason(error: unknown): string {
+  if (error instanceof ChannelResponseError) return error.safeMessage;
+  return 'the channel could not be reached';
 }
 
 export interface ChannelBinding {
@@ -145,12 +163,15 @@ export class Dispatcher {
           await this.#deps.notifications.delivered(message.seq, now);
           sent += 1;
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
+          // The full message is worth a log line; it is never worth a stored
+          // row or an HTTP response, both of which a viewer-level role can read.
+          const detail = error instanceof Error ? error.message : String(error);
+          const reason = safeReason(error);
           failed += 1;
 
           if (attempts >= MAX_ATTEMPTS) {
             await this.#deps.notifications.giveUp(message.seq, attempts, now, reason);
-            this.#deps.log?.(`notification to ${message.channel} abandoned: ${reason}`);
+            this.#deps.log?.(`notification to ${message.channel} abandoned: ${detail}`);
           } else {
             await this.#deps.notifications.retryAfter(
               message.seq,
@@ -158,6 +179,7 @@ export class Dispatcher {
               now + backoffMs(attempts),
               reason,
             );
+            this.#deps.log?.(`notification to ${message.channel} failed, retrying: ${detail}`);
           }
         }
       }
@@ -186,7 +208,9 @@ export class Dispatcher {
       await binding.channel.send(testNotification(this.#deps.now(), by), this.#deps.deps);
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      const detail = error instanceof Error ? error.message : String(error);
+      this.#deps.log?.(`test message to ${channelId} failed: ${detail}`);
+      return { ok: false, error: safeReason(error) };
     }
   }
 }

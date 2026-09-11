@@ -3,7 +3,7 @@ import { AlertsRepo } from '../db/alerts.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
 import { NotificationsRepo } from '../db/notifications.repo.js';
 import { describeEachDialect } from '../test/db-harness.js';
-import type { Channel, Notification } from './channel.js';
+import { type Channel, ChannelResponseError, type Notification } from './channel.js';
 import { backoffMs, Dispatcher, DRAIN_INTERVAL_MS, MAX_ATTEMPTS } from './dispatcher.js';
 
 const NOW = 1_756_800_000_000;
@@ -163,8 +163,39 @@ describeEachDialect('Dispatcher', (ctx) => {
     const [message] = await notifications.recent();
     expect(message?.finishedAt).not.toBeNull();
     expect(message?.delivered).toBe(false);
-    expect(message?.error).toContain('connection refused');
+    // A bare Error carries no remote content worth keeping past the log, so
+    // the stored row gets the generic shape rather than the raw message —
+    // this is still "and says so": the row is finished, not silently dropped.
+    expect(message?.error).toBe('the channel could not be reached');
     expect(await notifications.pendingCount()).toBe(0);
+  });
+
+  /**
+   * A `ChannelResponseError` is what a real channel throws; its status is
+   * worth keeping on the row, its body is not.
+   */
+  it('keeps the status but not the remote body in the stored row', async () => {
+    const record = await alert('ken');
+    let now = NOW;
+    const channel: Channel = {
+      id: 'discord',
+      title: 'Discord',
+      async send() {
+        throw new ChannelResponseError('Discord', 401, 'secret-path-hunter2-should-not-appear');
+      },
+    };
+    const dispatch = dispatcher([{ channel }], () => now);
+
+    await dispatch.enqueue([{ kind: 'fired', alert: record }]);
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      await dispatch.drain();
+      now += backoffMs(attempt) + 1;
+    }
+
+    const [message] = await notifications.recent();
+    expect(message?.error).toBe('Discord answered 401');
+    expect(message?.error).not.toContain('hunter2');
   });
 
   /**
@@ -310,7 +341,7 @@ describeEachDialect('Dispatcher', (ctx) => {
       id: 'discord',
       title: 'Discord',
       async send() {
-        throw new Error('Discord answered 401');
+        throw new ChannelResponseError('Discord', 401, 'body a real Discord response would send');
       },
     };
 
@@ -318,6 +349,46 @@ describeEachDialect('Dispatcher', (ctx) => {
       ok: false,
       error: 'Discord answered 401',
     });
+  });
+
+  /**
+   * The status is worth reporting; the remote's own words are not. A
+   * response body echoes the request path often enough to be a real hazard —
+   * for a webhook the path is the credential.
+   */
+  it('never returns the remote body a channel failed with', async () => {
+    const failing: Channel = {
+      id: 'discord',
+      title: 'Discord',
+      async send() {
+        throw new ChannelResponseError('Discord', 401, 'hunter2-should-not-appear');
+      },
+    };
+
+    const result = await dispatcher([{ channel: failing }]).test('discord', 'admin');
+
+    expect(result).toEqual({ ok: false, error: 'Discord answered 401' });
+    expect(JSON.stringify(result)).not.toContain('hunter2');
+  });
+
+  /**
+   * Not every failure is a `ChannelResponseError` — a header the platform
+   * refuses to build (the ntfy token, quoted verbatim) throws a bare `Error`.
+   * That message never leaves this process either.
+   */
+  it('reduces a bare error to a generic reason, and does not leak its message', async () => {
+    const failing: Channel = {
+      id: 'ntfy',
+      title: 'ntfy',
+      async send() {
+        throw new Error('Headers.append: "Bearer hunter2-should-not-appear" is invalid');
+      },
+    };
+
+    const result = await dispatcher([{ channel: failing }]).test('ntfy', 'admin');
+
+    expect(result).toEqual({ ok: false, error: 'the channel could not be reached' });
+    expect(JSON.stringify(result)).not.toContain('hunter2');
   });
 
   it('queues nothing to a test message, so the alerts screen stays about real alerts', async () => {
