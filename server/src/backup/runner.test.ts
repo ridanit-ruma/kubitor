@@ -1,9 +1,31 @@
-import { beforeAll, beforeEach, expect, it } from 'vitest';
+import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import type { BackupConfig } from '../config.js';
 import { BackupsRepo } from '../db/backups.repo.js';
 import { migrateToLatest } from '../db/migrate.js';
 import { describeEachDialect } from '../test/db-harness.js';
 import { BackupRunner } from './runner.js';
+import type { S3Deps } from './s3.js';
+
+/**
+ * Counts real `S3Client` constructions, so the "same configuration object,
+ * skip the rebuild" behaviour in `BackupRunner#refresh` can be asserted from
+ * outside without exposing any new internal state on `BackupRunner` itself.
+ * The subclass changes nothing about behaviour — it only counts.
+ */
+const s3Constructions = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('./s3.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./s3.js')>();
+  return {
+    ...actual,
+    S3Client: class extends actual.S3Client {
+      constructor(deps: S3Deps) {
+        super(deps);
+        s3Constructions.count += 1;
+      }
+    },
+  };
+});
 
 const DESTINATION: BackupConfig = {
   endpoint: 'https://s3.example.com',
@@ -24,6 +46,7 @@ describeEachDialect('BackupRunner', (ctx) => {
 
   beforeEach(() => {
     records = new BackupsRepo(ctx.db);
+    s3Constructions.count = 0;
   });
 
   const runner = (config: () => BackupConfig | null): BackupRunner =>
@@ -66,6 +89,24 @@ describeEachDialect('BackupRunner', (ctx) => {
     const after = (await backup.status()) as { nextRunAt: number | null };
 
     expect(after.nextRunAt).not.toBe(before.nextRunAt);
+  });
+
+  /**
+   * The counterpart to "re-arms the schedule when it changes": while the
+   * configuration object is the one already in force, `#refresh` must not
+   * rebuild the S3 client on every tick — that would mean a fresh HTTP client
+   * (and, with an age recipient, a fresh encrypter) for every scheduler tick
+   * and every status poll, for a destination that never moved.
+   */
+  it('does not rebuild the S3 client while the configuration object is unchanged', async () => {
+    const backup = runner(() => DESTINATION);
+    expect(s3Constructions.count).toBe(1);
+
+    await backup.status();
+    expect(backup.configured).toBe(true);
+    await backup.status();
+
+    expect(s3Constructions.count).toBe(1);
   });
 
   it('goes back to unconfigured when the destination is cleared', async () => {
