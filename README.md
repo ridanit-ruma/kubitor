@@ -154,6 +154,7 @@ by construction.
 | `KUBITOR_SESSION_TTL_HOURS` | `12` | |
 | `KUBITOR_TRUSTED_PROXY_HEADER` | `x-forwarded-for` | The header carrying the real client IP |
 | `KUBITOR_COOKIE_SECURE` | `true` | Set `false` only for plain-HTTP development |
+| `KUBITOR_SETTINGS_KEY` | — | An age identity that encrypts the secrets stored in the database; `age-keygen` |
 | `KUBITOR_AGENT_SERVICE_ACCOUNT` | `kubitor-agent` | The only service account whose token may report host metrics |
 | `KUBITOR_BACKUP_S3_BUCKET` | — | Setting it turns backups on; see below |
 | `KUBITOR_BACKUP_SCHEDULE` | `17 3 * * *` | Five-field cron |
@@ -190,6 +191,17 @@ is called recovered — so a pod that restarts once, or a node that blinks while
 its kubelet restarts, never reaches a channel. **Recoveries are sent too.** A
 channel that only ever reports bad news is one people learn to ignore, because
 they cannot tell an outage from its aftermath.
+
+Notification channels are edited in the dashboard, under **Settings →
+Notifications**, and take effect immediately — no commit, no reconcile, no pod
+restart. Each channel has a **Send a test** button, because a webhook URL that
+is wrong fails silently at 3am.
+
+The `KUBITOR_NOTIFY_*` variables below still work and are **deprecated**. They
+are read once, on the first boot that finds no stored settings, to fill them in;
+after that the database is the only source and the variables are ignored. Set
+`KUBITOR_SETTINGS_KEY` before that first boot, or the seeded values are stored
+in the clear.
 
 ```bash
 KUBITOR_NOTIFY_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
@@ -266,6 +278,14 @@ KUBITOR_BACKUP_AGE_RECIPIENT=age1...        # optional, and recommended
 KUBITOR_BACKUP_SCHEDULE="17 3 * * *"        # the default
 ```
 
+The bucket, its keys, the schedule and the age recipient are all editable under
+**Settings → Backups**, and the variables above seed them once in the same way.
+
+`KUBITOR_BACKUP_AGE_IDENTITY` is the exception and stays in the environment.
+It is the key that decrypts a backup: putting it in the database would mean
+restoring the database required the backup, which required the key, which was
+inside the database being restored.
+
 Any S3-compatible store works — AWS, MinIO, Backblaze B2, Cloudflare R2, Ceph
 RGW. Prefer one the cluster does not depend on: a backup kept on storage served
 by the cluster it backs up survives none of the events backups exist for.
@@ -311,6 +331,24 @@ kubectl -n kubitor scale deploy/kubitor-server --replicas=1
 Step 3 matters: if the migration in the backup is **newer** than the image you
 are restoring into, roll the image forward first. A restore discovered halfway
 through a migration is the worst version of this.
+
+### What this costs
+
+Notification and backup settings now live on the volume rather than in your
+manifests, so a node rebuilt from git does not get them back — they come back
+with the database, from a backup. That is a deliberate trade: re-entering a
+webhook URL costs minutes, where a lost session secret or age identity costs the
+installation.
+
+It also means the secrets are in the file that gets uploaded to your bucket. On
+the first boot of this version, an existing deployment has no
+`KUBITOR_SETTINGS_KEY` — the variable is new — so the values seeded out of your
+`KUBITOR_NOTIFY_*` and `KUBITOR_BACKUP_*` variables are written to the database
+**in the clear**, and the boot log names each one. With no age recipient either,
+the backup sitting in the bucket therefore contains the credentials to that
+bucket. Set `KUBITOR_SETTINGS_KEY` before you upgrade, or set it afterwards and
+save each field again; the Backups screen says plainly when this is the state you
+are in.
 
 ## SSH sessions
 
@@ -404,6 +442,7 @@ credentials and hold a bucket's keys.
 | Turning integrations on and off | yes | yes | — |
 | Agent credentials | yes | — | — |
 | Backups and their bucket | yes | — | — |
+| Notification channels and their webhooks | yes | — | — |
 | Accounts and roles | yes | — | — |
 
 The line that matters is between running the cluster and holding the

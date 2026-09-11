@@ -21,7 +21,7 @@ export interface BackupSchedulerDeps {
  */
 export class BackupScheduler {
   readonly #deps: BackupSchedulerDeps;
-  readonly #expression: CronExpression;
+  #expression: CronExpression;
   #timer: ReturnType<typeof setInterval> | null = null;
   #lastFiredMinute: number | null = null;
   #running = false;
@@ -41,6 +41,18 @@ export class BackupScheduler {
   stop(): void {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
+  }
+
+  /**
+   * Points the scheduler at a different expression.
+   *
+   * The last-fired minute is cleared with it. That guard exists so one minute
+   * cannot fire twice; after a change, a match on the new expression is a
+   * different backup rather than a repeat of the old one.
+   */
+  setSchedule(expression: string): void {
+    this.#expression = parseCron(expression);
+    this.#lastFiredMinute = null;
   }
 
   /** The next minute this will fire, for the screen to show. */

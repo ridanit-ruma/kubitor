@@ -80,6 +80,13 @@ export const CORE_NAV: readonly NavEntry[] = [
     href: '/settings/backups',
     order: 3,
   },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    category: 'settings',
+    href: '/settings/notifications',
+    order: 4,
+  },
 ];
 
 /**
@@ -95,6 +102,7 @@ const NAV_REQUIRES: Record<string, Capability> = {
   accounts: 'accounts.manage',
   agents: 'agents.manage',
   backups: 'backups.manage',
+  notifications: 'notify.manage',
 };
 
 /**

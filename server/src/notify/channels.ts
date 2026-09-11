@@ -1,4 +1,11 @@
-import { body, type Channel, type ChannelDeps, headline, type Notification } from './channel.js';
+import {
+  body,
+  type Channel,
+  type ChannelDeps,
+  ChannelResponseError,
+  headline,
+  type Notification,
+} from './channel.js';
 
 /**
  * A channel that is one HTTP POST.
@@ -27,8 +34,10 @@ function posting(
       // channel that returned quietly on a 429 would drop the message that
       // rate limit was asking it to send again.
       if (!response.ok) {
-        throw new Error(
-          `${title} answered ${response.status}: ${(await response.text()).slice(0, 200)}`,
+        throw new ChannelResponseError(
+          title,
+          response.status,
+          (await response.text()).slice(0, 200),
         );
       }
     },
@@ -104,8 +113,10 @@ export function ntfyChannel(server: string, topic: string, token?: string): Chan
       });
 
       if (!response.ok) {
-        throw new Error(
-          `ntfy answered ${response.status}: ${(await response.text()).slice(0, 200)}`,
+        throw new ChannelResponseError(
+          'ntfy',
+          response.status,
+          (await response.text()).slice(0, 200),
         );
       }
     },
@@ -130,8 +141,10 @@ export function gotifyChannel(server: string, token: string): Channel {
       });
 
       if (!response.ok) {
-        throw new Error(
-          `Gotify answered ${response.status}: ${(await response.text()).slice(0, 200)}`,
+        throw new ChannelResponseError(
+          'Gotify',
+          response.status,
+          (await response.text()).slice(0, 200),
         );
       }
     },

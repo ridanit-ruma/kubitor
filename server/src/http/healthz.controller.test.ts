@@ -33,6 +33,8 @@ beforeAll(async () => {
   const notifications = {} as never;
   const dispatcher = {} as never;
   const hostIngest = {} as never;
+  const settings = {} as never;
+  const events = {} as never;
 
   const moduleRef = await Test.createTestingModule({
     imports: [
@@ -55,6 +57,8 @@ beforeAll(async () => {
         dispatcher,
         hostIngest,
         saVerifier: null,
+        settings,
+        events,
       }),
     ],
   }).compile();

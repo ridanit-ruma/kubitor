@@ -1,4 +1,10 @@
-import type { CapabilityManifest } from '@kubitor/shared';
+import type {
+  BackupInput,
+  BackupView,
+  CapabilityManifest,
+  NotifyInput,
+  NotifyView,
+} from '@kubitor/shared';
 import type { SensorReading } from './sensors';
 
 export class ApiError extends Error {
@@ -136,6 +142,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ currentPassword }),
     }),
+
+  notifySettings: () => request<NotifyView>('/api/settings/notify'),
+
+  saveNotifySettings: (input: NotifyInput) =>
+    request<{ changed: string[] }>('/api/settings/notify', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
+  /** One message, now, so a wrong webhook fails here instead of at 3am. */
+  testNotifyChannel: (channel: string) =>
+    request<{ ok: boolean; error?: string }>('/api/settings/notify/test', {
+      method: 'POST',
+      body: JSON.stringify({ channel }),
+    }),
+
+  backupSettings: () => request<BackupView>('/api/settings/backup'),
+
+  saveBackupSettings: (input: BackupInput, currentPassword: string) =>
+    request<{ changed: string[] }>('/api/settings/backup', {
+      method: 'PUT',
+      body: JSON.stringify({ ...input, currentPassword }),
+    }),
 };
 
 /**
@@ -202,6 +231,11 @@ export type BackupStatus =
       endpoint: string;
       /** `write-only` means kubitor cannot read back what it wrote. */
       encryption: 'none' | 'write-only' | 'readable';
+      /**
+       * Whether this bucket's own secret key is stored unencrypted in the
+       * database — which is the file being uploaded to it.
+       */
+      secretsInTheClear: boolean;
       schedule: string;
       nextRunAt: number | null;
       newestVerifiedAt: number | null;

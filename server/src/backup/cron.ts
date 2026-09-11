@@ -96,3 +96,21 @@ export function nextAfter(expression: CronExpression, from: Date): Date | null {
   }
   return null;
 }
+
+/**
+ * Whether an expression parses at all, where the reason it did not is nobody's
+ * business but the caller's.
+ *
+ * Both boundaries that take a schedule use this — the environment as it loads,
+ * and the stored document as it is read — so an expression that cannot be run
+ * is refused at the door rather than thrown from the scheduler's constructor,
+ * where it takes the boot with it.
+ */
+export function isCronExpression(value: string): boolean {
+  try {
+    parseCron(value);
+    return true;
+  } catch {
+    return false;
+  }
+}

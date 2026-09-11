@@ -29,6 +29,8 @@ export type Capability =
   | 'integrations.write'
   /** The bucket, its keys, and running a backup by hand. */
   | 'backups.manage'
+  /** The webhooks and tokens alerts are sent through, and a test send. */
+  | 'notify.manage'
   /** Minting and revoking the credentials machines report with. */
   | 'agents.manage'
   /** Creating, resetting and deleting accounts, and setting roles. */
@@ -39,6 +41,7 @@ const GRANTS: Record<Role, readonly Capability[]> = {
     'cluster.read',
     'integrations.write',
     'backups.manage',
+    'notify.manage',
     'agents.manage',
     'accounts.manage',
   ],

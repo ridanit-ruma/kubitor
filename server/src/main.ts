@@ -28,6 +28,7 @@ import { NodeSamplesRepo } from './db/node-samples.repo.js';
 import { NotificationsRepo } from './db/notifications.repo.js';
 import { sweepRetention } from './db/retention.js';
 import { SessionsRepo } from './db/sessions.repo.js';
+import { SettingsRepo } from './db/settings.repo.js';
 import { TABLES } from './db/tables.js';
 import { HealthService } from './health.service.js';
 import { LiveGateway } from './http/ws.gateway.js';
@@ -36,9 +37,9 @@ import { traefikIntegration } from './integrations/traefik/index.js';
 import { KubeClient } from './kube/client.js';
 import { clusterProbes } from './kube/probes.js';
 import { clusterJwksReader, ownNamespace, ServiceAccountVerifier } from './kube/sa-token.js';
-import { channelsFrom } from './notify/build.js';
 import { Dispatcher } from './notify/dispatcher.js';
 import { Heartbeat } from './notify/heartbeat.js';
+import { channelSource } from './notify/source.js';
 import { CapabilitiesService } from './plugins/capabilities.service.js';
 import { DETECTION_INTERVAL_MS, DetectionService } from './plugins/detection.service.js';
 import { INTEGRATIONS } from './plugins/index.js';
@@ -46,6 +47,8 @@ import { IngestPipeline } from './plugins/ingest.js';
 import { unavailableProbes } from './plugins/probes/unavailable.js';
 import { IntegrationRegistry } from './plugins/registry.js';
 import { FacetQuery } from './query/facet-query.js';
+import { sealerFor } from './settings/secrets.js';
+import { SettingsService } from './settings/service.js';
 
 const BOOTSTRAP_USERNAME = 'admin';
 /** Pruning runs often enough that a burst cannot outrun it. */
@@ -78,6 +81,45 @@ async function bootstrap(): Promise<void> {
   const accountsRepo = new AccountsRepo(db);
   const sessionsRepo = new SessionsRepo(db);
   const eventsRepo = new AccountEventsRepo(db, dialect);
+
+  // What the dashboard can edit. The environment seeds these documents once, on
+  // the boot that finds them missing, and is ignored from then on.
+  const settings = await SettingsService.load({
+    repo: new SettingsRepo(db, dialect),
+    sealer: await sealerFor(config.settingsKey),
+    seed: { notify: config.notify, backup: config.backup ?? null },
+    ...(config.backupAgeIdentity === undefined ? {} : { ageIdentity: config.backupAgeIdentity }),
+    now: () => Date.now(),
+    log: (message) => logger.warn(message),
+  });
+
+  if (!settings.canStoreSecrets) {
+    logger.warn(
+      'No KUBITOR_SETTINGS_KEY is set. Settings can be read and edited, but a new webhook, token or secret key cannot be stored. Generate one with age-keygen.',
+    );
+  }
+
+  // Said plainly, and at the moment it is true. The upgrade that introduced
+  // `KUBITOR_SETTINGS_KEY` seeds these documents from an environment that
+  // cannot have had one, so the first boot after it writes secrets to the
+  // database in the clear — including, for an existing backup user, the S3
+  // secret key, into the file that is then uploaded to that same bucket.
+  const plaintext = settings.plaintextSecrets;
+  if (plaintext.length > 0) {
+    logger.warn(
+      `These settings are stored in the database unencrypted, because no KUBITOR_SETTINGS_KEY was set when they were written: ${plaintext.join(', ')}. Set one with age-keygen and save each field again to encrypt it.`,
+    );
+    if (settings.backupSecretInTheClear) {
+      logger.warn(
+        "The bucket's own secret key is one of them, so an unencrypted backup in that bucket carries the credentials to it. Set an age recipient under Settings -> Backups, or a KUBITOR_SETTINGS_KEY, or both.",
+      );
+    }
+  }
+
+  const channels = channelSource(
+    () => settings.notify,
+    (message) => logger.warn(message),
+  );
 
   const auth = new AuthService({
     accounts: accountsRepo,
@@ -126,19 +168,16 @@ async function bootstrap(): Promise<void> {
   const agentTokens = new AgentTokensRepo(db);
   const agents = new AgentsService(agentTokens);
 
-  // Off unless a bucket is named. A configured backup starts its schedule once
-  // the server is listening, not here — nothing should run before the process
-  // is able to serve.
+  // Always constructed: the destination lives in the database now, so a server
+  // that boots with none must still be able to acquire one without a restart.
   const backupRecords = new BackupsRepo(db);
-  const backup = config.backup
-    ? new BackupRunner({
-        config: config.backup,
-        db,
-        records: backupRecords,
-        now: () => new Date(),
-        log: (message) => logger.log(message),
-      })
-    : null;
+  const backup = new BackupRunner({
+    config: () => settings.backup,
+    db,
+    records: backupRecords,
+    now: () => new Date(),
+    log: (message) => logger.log(message),
+  });
   const nodeNames = async (): Promise<string[]> =>
     kube ? (await kube.listNodes()).map((node) => node.name) : [];
 
@@ -251,7 +290,7 @@ async function bootstrap(): Promise<void> {
   // able to slow the loop that notices things are broken.
   const notifications = new NotificationsRepo(db);
   const dispatcher = new Dispatcher({
-    channels: channelsFrom(config.notify),
+    channels,
     notifications,
     alerts: alertRecords,
     deps: { fetch: globalThis.fetch, baseUrl: config.publicUrl ?? null },
@@ -262,7 +301,7 @@ async function bootstrap(): Promise<void> {
   const alerts = new AlertsService({
     db,
     alerts: alertRecords,
-    backups: config.backup ? backupRecords : null,
+    backups: () => (settings.backup ? backupRecords : null),
     staleAgents,
     now: () => Date.now(),
     log: (message) => logger.log(message),
@@ -342,6 +381,8 @@ async function bootstrap(): Promise<void> {
       dispatcher,
       hostIngest,
       saVerifier,
+      settings,
+      events: eventsRepo,
     }),
   );
 
@@ -366,7 +407,7 @@ async function bootstrap(): Promise<void> {
     clearInterval(detectionTimer);
     clearInterval(retentionTimer);
     scheduler.stop();
-    backup?.stop();
+    backup.stop();
     alerts.stop();
     dispatcher.stop();
     heartbeat.stop();
@@ -387,15 +428,19 @@ async function bootstrap(): Promise<void> {
   if (heartbeat.enabled) logger.log(`Heartbeat to ${config.heartbeat?.url}`);
   if (dispatcher.configured) {
     logger.log(
-      `Notifying ${channelsFrom(config.notify)
+      `Notifying ${channels()
         .map((c) => c.channel.id)
         .join(', ')}`,
     );
+  } else {
+    logger.log('No notification channel is configured. Add one under Settings.');
   }
 
-  if (backup) {
-    backup.start();
-    logger.log(`Backups to ${config.backup?.bucket} on "${config.backup?.schedule}"`);
+  backup.start();
+  if (settings.backup) {
+    logger.log(`Backups to ${settings.backup.bucket} on "${settings.backup.schedule}"`);
+  } else {
+    logger.log('No backup destination is configured. Add one under Settings.');
   }
 }
 

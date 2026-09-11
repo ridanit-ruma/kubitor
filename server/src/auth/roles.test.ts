@@ -5,6 +5,7 @@ const EVERY_CAPABILITY: Capability[] = [
   'cluster.read',
   'integrations.write',
   'backups.manage',
+  'notify.manage',
   'agents.manage',
   'accounts.manage',
 ];
@@ -29,7 +30,17 @@ describe('roles', () => {
     expect(can('operator', 'integrations.write')).toBe(true);
     expect(can('operator', 'agents.manage')).toBe(false);
     expect(can('operator', 'backups.manage')).toBe(false);
+    expect(can('operator', 'notify.manage')).toBe(false);
     expect(can('operator', 'accounts.manage')).toBe(false);
+  });
+
+  /**
+   * A webhook URL is a credential that reaches outside the cluster, which is
+   * the line this role model already draws. An operator who could redirect
+   * alerts could also silence them.
+   */
+  it('names admin alone for notification settings', () => {
+    expect(rolesWith('notify.manage')).toEqual(['admin']);
   });
 
   it('lets a viewer change nothing at all', () => {

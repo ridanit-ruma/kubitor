@@ -19,7 +19,7 @@ export const EVALUATION_INTERVAL_MS = 60_000;
 export interface AlertsDeps {
   db: Kysely<Database>;
   alerts: AlertsRepo;
-  backups: BackupsRepo | null;
+  backups(): BackupsRepo | null;
   /** Machines with a credential that have stopped reporting. */
   staleAgents(): Promise<readonly string[]>;
   now(): number;
@@ -105,7 +105,7 @@ export class AlertsService {
         .where((eb) => eb.or([eb('reason', 'is not', null), eb('ready', '=', 0)]))
         .execute(),
       this.#deps.staleAgents(),
-      this.#deps.backups?.recent(1) ?? Promise.resolve([]),
+      this.#deps.backups()?.recent(1) ?? Promise.resolve([]),
     ]);
 
     const last = backups.find((backup) => backup.finishedAt !== null);

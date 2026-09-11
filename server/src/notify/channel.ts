@@ -32,6 +32,30 @@ export interface Channel {
   send(notification: Notification, deps: ChannelDeps): Promise<void>;
 }
 
+/**
+ * A channel that answered with a status worth reporting.
+ *
+ * Typed so the status can be reported without the body. A remote's error body
+ * quotes the request path often enough to be a real hazard, and for a webhook
+ * the path is the credential.
+ */
+export class ChannelResponseError extends Error {
+  readonly channelTitle: string;
+  readonly status: number;
+
+  constructor(channelTitle: string, status: number, body: string) {
+    super(`${channelTitle} answered ${status}: ${body}`);
+    this.name = 'ChannelResponseError';
+    this.channelTitle = channelTitle;
+    this.status = status;
+  }
+
+  /** What may leave this process: the shape, never the remote's words. */
+  get safeMessage(): string {
+    return `${this.channelTitle} answered ${this.status}`;
+  }
+}
+
 /** Severities in order of how loud they are, worst first. */
 export const SEVERITY_ORDER: readonly Severity[] = ['critical', 'warning'];
 

@@ -119,6 +119,12 @@ describe('GET /api/capabilities', () => {
   it('requires a session', async () => {
     expect((await http().get('/api/capabilities')).status).toBe(401);
   });
+
+  it('offers the Notifications screen to an admin', async () => {
+    const response = await http().get('/api/capabilities').set('Cookie', cookie);
+
+    expect(response.body.nav.map((entry: { id: string }) => entry.id)).toContain('notifications');
+  });
 });
 
 describe('capabilities on a cluster without the integration', () => {

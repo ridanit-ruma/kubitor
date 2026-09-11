@@ -7,6 +7,7 @@ import type { BackupRunner } from './backup/runner.js';
 import type { HostIngest } from './collect/host-ingest.js';
 import type { LiveCache } from './collect/live-cache.js';
 import type { Config } from './config.js';
+import type { AccountEventsRepo } from './db/account-events.repo.js';
 import type { AgentTokensRepo } from './db/agent-tokens.repo.js';
 import type { NodeSamplesRepo } from './db/node-samples.repo.js';
 import type { NotificationsRepo } from './db/notifications.repo.js';
@@ -22,12 +23,15 @@ import { IngestController } from './http/ingest.controller.js';
 import { PasswordFreshGuard } from './http/password-fresh.guard.js';
 import { QueryController } from './http/query.controller.js';
 import { SessionGuard } from './http/session.guard.js';
+import { SettingsController } from './http/settings.controller.js';
 import type { ServiceAccountVerifier } from './kube/sa-token.js';
 import type { Dispatcher } from './notify/dispatcher.js';
 import type { CapabilitiesService } from './plugins/capabilities.service.js';
 import type { IngestPipeline } from './plugins/ingest.js';
 import type { FacetQuery } from './query/facet-query.js';
+import type { SettingsService } from './settings/service.js';
 import {
+  ACCOUNT_EVENTS,
   ACCOUNTS_SERVICE,
   AGENT_TOKENS,
   AGENTS_SERVICE,
@@ -46,6 +50,7 @@ import {
   NOTIFICATIONS_REPO,
   QUERY_SERVICE,
   SA_VERIFIER,
+  SETTINGS_SERVICE,
 } from './tokens.js';
 
 /**
@@ -77,6 +82,8 @@ export interface AppDeps {
   alerts: AlertsService;
   notifications: NotificationsRepo;
   dispatcher: Dispatcher;
+  settings: SettingsService;
+  events: AccountEventsRepo;
 }
 
 @Module({})
@@ -91,6 +98,7 @@ export function createAppModule(deps: AppDeps): DynamicModule {
       AccountsController,
       AgentsController,
       BackupsController,
+      SettingsController,
       AlertsController,
       CapabilitiesController,
       QueryController,
@@ -115,6 +123,8 @@ export function createAppModule(deps: AppDeps): DynamicModule {
       { provide: ALERTS_SERVICE, useValue: deps.alerts },
       { provide: NOTIFICATIONS_REPO, useValue: deps.notifications },
       { provide: DISPATCHER, useValue: deps.dispatcher },
+      { provide: SETTINGS_SERVICE, useValue: deps.settings },
+      { provide: ACCOUNT_EVENTS, useValue: deps.events },
       SessionGuard,
       PasswordFreshGuard,
     ],

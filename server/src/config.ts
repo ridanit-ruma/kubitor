@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isCronExpression } from './backup/cron.js';
 import type { DbConfig } from './db/connect.js';
 
 /**
@@ -31,6 +32,29 @@ const schema = z
       .default('true')
       .transform((value) => value === 'true'),
 
+    /**
+     * An age identity (`AGE-SECRET-KEY-1...`) that encrypts the secret-bearing
+     * fields of the settings documents.
+     *
+     * In the environment and not in the database for the obvious reason: it is
+     * what opens the database's own secrets. Absent, kubitor reads settings
+     * that were stored in the clear but refuses to write a new secret, and the
+     * dashboard says why. Generate one with `age-keygen`.
+     *
+     * The shape is checked here because `age-keygen` prints two comment lines
+     * above the key, and pasting one of those is the expected mistake. Caught
+     * at load, it is one line naming the variable; caught later it is an age
+     * error naming nothing.
+     */
+    KUBITOR_SETTINGS_KEY: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => value.startsWith('AGE-SECRET-KEY-1'),
+        'must be an age identity beginning with AGE-SECRET-KEY-1 — the last line of age-keygen output, not the comments above it',
+      )
+      .optional(),
+
     /* Backup. Off entirely unless a bucket is named. */
     KUBITOR_BACKUP_S3_ENDPOINT: z.string().url().optional(),
     KUBITOR_BACKUP_S3_BUCKET: z.string().min(1).optional(),
@@ -54,8 +78,16 @@ const schema = z
     /**
      * Five-field cron. The odd minute is deliberate: every backup in the world
      * scheduled at `0 3` is a thundering herd on somebody's endpoint.
+     *
+     * Parsed here rather than trusted: this value is seeded into the stored
+     * document on the first boot that finds none, and a seeded expression that
+     * does not parse is one the environment can no longer be edited to fix.
      */
-    KUBITOR_BACKUP_SCHEDULE: z.string().min(1).default('17 3 * * *'),
+    KUBITOR_BACKUP_SCHEDULE: z
+      .string()
+      .min(1)
+      .refine(isCronExpression, 'is not a five-field cron expression')
+      .default('17 3 * * *'),
 
     /* Notification. Each channel is off unless its address is given. */
     KUBITOR_NOTIFY_DISCORD_WEBHOOK: z.string().url().optional(),
@@ -174,6 +206,15 @@ export interface Config {
   /** Header the ingress sets with the real client address. */
   trustedProxyHeader: string;
   cookieSecure: boolean;
+  /** Absent unless an age identity was given; see `KUBITOR_SETTINGS_KEY`. */
+  settingsKey?: string;
+  /**
+   * The age identity that opens a backup, straight from the environment.
+   *
+   * Never from the database: restoring the database needs the backup, which
+   * needs this key, which would be inside the database being restored.
+   */
+  backupAgeIdentity?: string;
   /** Absent unless a bucket is named, which is what turns backups on. */
   backup?: BackupConfig;
   /** Always present; it just may name no channel at all. */
@@ -236,6 +277,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       : {}),
     trustedProxyHeader: value.KUBITOR_TRUSTED_PROXY_HEADER,
     cookieSecure: value.KUBITOR_COOKIE_SECURE,
+    ...(value.KUBITOR_SETTINGS_KEY ? { settingsKey: value.KUBITOR_SETTINGS_KEY } : {}),
+    ...(value.KUBITOR_BACKUP_AGE_IDENTITY
+      ? { backupAgeIdentity: value.KUBITOR_BACKUP_AGE_IDENTITY }
+      : {}),
     notify: {
       ...(value.KUBITOR_NOTIFY_DISCORD_WEBHOOK
         ? { discordWebhook: value.KUBITOR_NOTIFY_DISCORD_WEBHOOK }

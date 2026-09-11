@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Pencil, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -28,13 +28,14 @@ import {
 import { ApiError, api, type BackupStatus } from '@/lib/api';
 import { formatBytes, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/live';
+import { DestinationDialog } from './destination-dialog';
 
 /** What each encryption mode actually means for the bucket. */
 const ENCRYPTION: Record<string, { label: string; detail: string }> = {
   none: {
     label: 'Not encrypted here',
     detail:
-      'Anyone who can read the bucket can read the database. Set KUBITOR_BACKUP_AGE_RECIPIENT, or turn on the bucket\u2019s own encryption.',
+      'Anyone who can read the bucket can read the database. Add an age recipient under Edit destination, or turn on the bucket\u2019s own encryption.',
   },
   'write-only': {
     label: 'Encrypted, unreadable here',
@@ -60,6 +61,7 @@ const ENCRYPTION: Record<string, { label: string; detail: string }> = {
 export default function BackupsPage() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [asking, setAsking] = useState(false);
+  const [editing, setEditing] = useState(false);
   const now = useNow();
 
   const load = useCallback(async () => {
@@ -80,8 +82,12 @@ export default function BackupsPage() {
           </Link>
         </Button>
         <h1 className="text-base font-semibold tracking-tight">Backups</h1>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditing(true)}>
+          <Pencil className="size-3.5" />
+          Edit destination
+        </Button>
         {status?.configured && (
-          <Button size="sm" className="ml-auto" onClick={() => setAsking(true)}>
+          <Button size="sm" onClick={() => setAsking(true)}>
             <Play className="size-3.5" />
             Back up now
           </Button>
@@ -115,6 +121,8 @@ export default function BackupsPage() {
           <p className="max-w-3xl text-sm text-muted-foreground">
             {ENCRYPTION[status.encryption]?.detail}
           </p>
+
+          {status.encryption === 'none' && status.secretsInTheClear && <CredentialsInBucket />}
 
           <div className="pane rounded-lg border border-line">
             <Table className="table-fixed">
@@ -179,6 +187,15 @@ export default function BackupsPage() {
           await load();
         }}
       />
+
+      <DestinationDialog
+        open={editing}
+        onClose={() => setEditing(false)}
+        onDone={async () => {
+          setEditing(false);
+          await load();
+        }}
+      />
     </div>
   );
 }
@@ -194,6 +211,34 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+/**
+ * The one state where a backup is worse than no backup.
+ *
+ * Unencrypted backups and an unencrypted secret key are each survivable alone.
+ * Together they mean the object in the bucket contains the credentials to that
+ * bucket, and the loop closes on itself. Severity colour, because severity is
+ * what this is.
+ */
+function CredentialsInBucket() {
+  return (
+    <div className="max-w-3xl space-y-2 rounded-lg border border-bad/40 bg-bad/5 p-4">
+      <p className="text-sm font-medium text-bad">
+        This bucket’s own credentials are inside the backups it holds.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        The secret access key is stored unencrypted in the database, and the database is what gets
+        uploaded here — so anyone who can read the bucket can read the key to it.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Add an age recipient under <strong>Edit destination</strong> to encrypt what is uploaded. To
+        stop storing the key in the clear as well, set{' '}
+        <code className="font-mono text-xs">KUBITOR_SETTINGS_KEY</code> and save the destination
+        again.
+      </p>
+    </div>
+  );
+}
+
 function NotConfigured() {
   return (
     <div className="max-w-3xl space-y-3 rounded-lg border border-line p-4">
@@ -202,17 +247,11 @@ function NotConfigured() {
         credentials, integration settings and history in one database; losing the volume loses all
         of it.
       </p>
-      <pre className="overflow-x-auto rounded border border-line bg-muted px-3 py-2 font-mono text-xs">
-        {`KUBITOR_BACKUP_S3_ENDPOINT=https://s3.eu-central-1.amazonaws.com
-KUBITOR_BACKUP_S3_BUCKET=my-kubitor-backups
-KUBITOR_BACKUP_S3_ACCESS_KEY=...
-KUBITOR_BACKUP_S3_SECRET_KEY=...
-KUBITOR_BACKUP_AGE_RECIPIENT=age1...   # optional, and recommended`}
-      </pre>
       <p className="text-sm text-muted-foreground">
-        Works with any S3-compatible store \u2014 AWS, MinIO, Backblaze B2, Cloudflare R2, Ceph RGW.
-        Prefer somewhere the cluster does not depend on: a backup on storage served by the cluster
-        it backs up survives none of the events backups exist for.
+        Use <strong>Edit destination</strong> above. Works with any S3-compatible store \u2014 AWS,
+        MinIO, Backblaze B2, Cloudflare R2, Ceph RGW. Prefer somewhere the cluster does not depend
+        on: a backup on storage served by the cluster it backs up survives none of the events
+        backups exist for.
       </p>
       <p className="text-sm text-muted-foreground">
         Running PostgreSQL? kubitor does not back that up \u2014 use your database\u2019s own backup

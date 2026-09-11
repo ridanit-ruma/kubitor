@@ -24,10 +24,11 @@ describeEachDialect('AlertsService', (ctx) => {
   });
 
   function service(overrides: { stale?: string[]; backups?: BackupsRepo | null } = {}) {
+    const backups = overrides.backups === undefined ? null : overrides.backups;
     return new AlertsService({
       db: ctx.db,
       alerts,
-      backups: overrides.backups === undefined ? null : overrides.backups,
+      backups: () => backups,
       staleAgents: async () => overrides.stale ?? [],
       now: () => NOW,
     });
@@ -115,7 +116,7 @@ describeEachDialect('AlertsService', (ctx) => {
     const alerting = new AlertsService({
       db: ctx.db,
       alerts,
-      backups: null,
+      backups: () => null,
       staleAgents: async () => {
         throw new Error('cache unavailable');
       },
@@ -131,7 +132,7 @@ describeEachDialect('AlertsService', (ctx) => {
     const alerting = new AlertsService({
       db: ctx.db,
       alerts,
-      backups: null,
+      backups: () => null,
       staleAgents: async () => ['buildbox'],
       now: () => NOW,
       onTransitions: (transitions) => seen.push(...transitions.map((t) => t.kind)),
