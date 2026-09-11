@@ -120,18 +120,36 @@ function plainField(input: string, current: string | undefined, changed: string[
   return input;
 }
 
+/** What `fetch` can post to, and what nodemailer can open a transport on. */
+const HTTP_PROTOCOLS = ['http:', 'https:'] as const;
+const SMTP_PROTOCOLS = ['smtp:', 'smtps:'] as const;
+
 /**
  * A webhook address that is not a URL fails silently at 3am, and the failure
  * surfaces as an error string carrying the address back to whoever asked. Refuse
  * it at save time instead, which is also what the test button exists to make
  * unnecessary.
+ *
+ * The scheme is checked as well as the syntax, because parsing is not the bar
+ * these values have to clear. `https://mail.example.com` is a perfectly good
+ * URL and the likeliest typo on a screen where every other field is one — and
+ * as an SMTP URL it is the value that makes nodemailer throw where nobody is
+ * catching. Refusing it here is a 400 naming the field, which is where a typo
+ * belongs.
  */
-function requireUrl(value: string | null, field: string): void {
+function requireUrl(value: string | null, field: string, protocols: readonly string[]): void {
   if (value === null || value === '' || value === SECRET_KEPT) return;
+
+  let url: URL;
   try {
-    new URL(value);
+    url = new URL(value);
   } catch {
     throw new SettingsInvalid(field, 'must be a URL');
+  }
+
+  if (!protocols.includes(url.protocol)) {
+    const names = protocols.map((protocol) => protocol.replace(':', '')).join(' or ');
+    throw new SettingsInvalid(field, `must be a ${names} URL`);
   }
 }
 
@@ -144,10 +162,10 @@ export async function mergeNotify(
   // handed to `fetch` or nodemailer as a URL, and a value that fails to parse
   // there comes back in an error string a caller can read — the same string
   // `GET` redacts everywhere else.
-  requireUrl(input.discord.webhookUrl, 'discord.webhookUrl');
-  requireUrl(input.slack.webhookUrl, 'slack.webhookUrl');
-  requireUrl(input.webhook.url, 'webhook.url');
-  requireUrl(input.smtp.url, 'smtp.url');
+  requireUrl(input.discord.webhookUrl, 'discord.webhookUrl', HTTP_PROTOCOLS);
+  requireUrl(input.slack.webhookUrl, 'slack.webhookUrl', HTTP_PROTOCOLS);
+  requireUrl(input.webhook.url, 'webhook.url', HTTP_PROTOCOLS);
+  requireUrl(input.smtp.url, 'smtp.url', SMTP_PROTOCOLS);
 
   const changed: string[] = [];
 

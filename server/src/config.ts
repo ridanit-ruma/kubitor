@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isCronExpression } from './backup/cron.js';
 import type { DbConfig } from './db/connect.js';
 
 /**
@@ -39,8 +40,20 @@ const schema = z
      * what opens the database's own secrets. Absent, kubitor reads settings
      * that were stored in the clear but refuses to write a new secret, and the
      * dashboard says why. Generate one with `age-keygen`.
+     *
+     * The shape is checked here because `age-keygen` prints two comment lines
+     * above the key, and pasting one of those is the expected mistake. Caught
+     * at load, it is one line naming the variable; caught later it is an age
+     * error naming nothing.
      */
-    KUBITOR_SETTINGS_KEY: z.string().min(1).optional(),
+    KUBITOR_SETTINGS_KEY: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => value.startsWith('AGE-SECRET-KEY-1'),
+        'must be an age identity beginning with AGE-SECRET-KEY-1 — the last line of age-keygen output, not the comments above it',
+      )
+      .optional(),
 
     /* Backup. Off entirely unless a bucket is named. */
     KUBITOR_BACKUP_S3_ENDPOINT: z.string().url().optional(),
@@ -65,8 +78,16 @@ const schema = z
     /**
      * Five-field cron. The odd minute is deliberate: every backup in the world
      * scheduled at `0 3` is a thundering herd on somebody's endpoint.
+     *
+     * Parsed here rather than trusted: this value is seeded into the stored
+     * document on the first boot that finds none, and a seeded expression that
+     * does not parse is one the environment can no longer be edited to fix.
      */
-    KUBITOR_BACKUP_SCHEDULE: z.string().min(1).default('17 3 * * *'),
+    KUBITOR_BACKUP_SCHEDULE: z
+      .string()
+      .min(1)
+      .refine(isCronExpression, 'is not a five-field cron expression')
+      .default('17 3 * * *'),
 
     /* Notification. Each channel is off unless its address is given. */
     KUBITOR_NOTIFY_DISCORD_WEBHOOK: z.string().url().optional(),

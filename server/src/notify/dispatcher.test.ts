@@ -265,10 +265,6 @@ describeEachDialect('Dispatcher', (ctx) => {
   });
 
   /**
-   * A server that booted with no channel must still deliver once one is added,
-   * or "no restart" is not true. The drain timer therefore runs unconditionally.
-   */
-  /**
    * The behavioural claim behind the unconditional `start()`: a server that
    * booted with no channel must still deliver once one is added from the
    * dashboard, with no restart. Driving this through the real interval — not a

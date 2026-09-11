@@ -74,11 +74,31 @@ describe('plaintextSealer', () => {
 });
 
 describe('sealerFor', () => {
-  it('gives a sealing sealer when a key is set', () => {
-    expect(sealerFor(identity).canSeal).toBe(true);
+  it('gives a sealing sealer when a key is set', async () => {
+    expect((await sealerFor(identity)).canSeal).toBe(true);
   });
 
-  it('gives a read-only sealer when none is', () => {
-    expect(sealerFor(undefined).canSeal).toBe(false);
+  it('gives a read-only sealer when none is', async () => {
+    expect((await sealerFor(undefined)).canSeal).toBe(false);
+  });
+
+  /**
+   * `age-keygen` prints two comment lines above the key, so pasting the wrong
+   * one is the expected mistake. Before this, the identity was only ever
+   * examined by a promise nobody was awaiting yet: it rejected with age's
+   * `invalid separator "1"`, no handler was attached, and Node's default for an
+   * unhandled rejection terminated the process — at boot, naming neither the
+   * variable nor the fix, on an install that had never asked to seal anything.
+   */
+  it('refuses a malformed identity by name rather than taking the process with it', async () => {
+    await expect(sealerFor('# created: 2026-09-11T00:00:00Z')).rejects.toThrow(
+      /KUBITOR_SETTINGS_KEY is not a valid age identity/,
+    );
+  });
+
+  it('leaves a malformed identity handed to ageSealer directly as a rejection, not a crash', async () => {
+    const sealer = ageSealer('AGE-SECRET-KEY-1NOTREALLY');
+
+    await expect(sealer.seal('anything')).rejects.toThrow();
   });
 });

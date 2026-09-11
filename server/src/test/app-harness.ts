@@ -10,6 +10,7 @@ import { AccountsService } from '../auth/accounts.service.js';
 import { AgentsService } from '../auth/agents.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import { hashPassword } from '../auth/password.js';
+import { BackupRunner } from '../backup/runner.js';
 import { HostIngest } from '../collect/host-ingest.js';
 import { LiveCache } from '../collect/live-cache.js';
 import type { Config } from '../config.js';
@@ -17,6 +18,7 @@ import { AccountEventsRepo } from '../db/account-events.repo.js';
 import { AccountsRepo } from '../db/accounts.repo.js';
 import { AgentTokensRepo } from '../db/agent-tokens.repo.js';
 import { AlertsRepo } from '../db/alerts.repo.js';
+import { BackupsRepo } from '../db/backups.repo.js';
 import { createDb } from '../db/connect.js';
 import { SQLITE_SQL } from '../db/dialect.js';
 import { IntegrationStateRepo } from '../db/integration-state.repo.js';
@@ -57,6 +59,9 @@ export interface TestApp {
   hostIngest: HostIngest;
   config: Config;
   settings: SettingsService;
+  backup: BackupRunner;
+  /** Every line the composed application logged, in order. */
+  logs: string[];
   close(): Promise<void>;
 }
 
@@ -118,25 +123,49 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const pipeline = new IngestPipeline(db, SQLITE_SQL);
   const agentTokens = new AgentTokensRepo(db);
   const agents = new AgentsService(agentTokens);
+  // Everything below is wired the way `main.ts` wires it, and for one reason:
+  // a harness that composes the application differently from the composition
+  // root tests a program nobody runs. It passed no logger and no backup runner
+  // once, and the cost was a settings document that could put the real server
+  // into a boot loop with every test still green.
+  const logs: string[] = [];
+  const log = (message: string): void => {
+    logs.push(message);
+  };
+
   const settings = await SettingsService.load({
     repo: new SettingsRepo(db, SQLITE_SQL),
-    sealer: sealerFor(config.settingsKey),
+    sealer: await sealerFor(config.settingsKey),
     seed: { notify: config.notify, backup: config.backup ?? null },
     ...(config.backupAgeIdentity === undefined ? {} : { ageIdentity: config.backupAgeIdentity }),
     now: () => Date.now(),
+    log,
   });
   const notifications = new NotificationsRepo(db);
   const dispatcher = new Dispatcher({
-    channels: channelSource(() => settings.notify),
+    channels: channelSource(() => settings.notify, log),
     notifications,
     alerts: new AlertsRepo(db, SQLITE_SQL),
     deps: { fetch: globalThis.fetch, baseUrl: null },
     now: () => Date.now(),
+    log,
+  });
+  const backupRecords = new BackupsRepo(db);
+  // Always constructed, as in `main.ts`: the destination lives in the database,
+  // so a server that boots without one must be able to acquire one. Never
+  // started here — nothing in a test should be waiting for a cron minute.
+  const backup = new BackupRunner({
+    config: () => settings.backup,
+    db,
+    records: backupRecords,
+    now: () => new Date(),
+    workDir: directory,
+    log,
   });
   const alerts = new AlertsService({
     db,
     alerts: new AlertsRepo(db, SQLITE_SQL),
-    backups: () => null,
+    backups: () => (settings.backup ? backupRecords : null),
     staleAgents: async () => [],
     now: () => Date.now(),
   });
@@ -171,7 +200,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         agentTokens,
         agents,
         nodeNames: async () => [...(options.nodeNames ?? [])],
-        backup: null,
+        backup,
         alerts,
         notifications,
         dispatcher,
@@ -205,7 +234,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     hostIngest,
     config,
     settings,
+    backup,
+    logs,
     async close() {
+      backup.stop();
       await app.close();
       await db.destroy();
       rmSync(directory, { recursive: true, force: true });

@@ -52,6 +52,8 @@ export class BackupRunner {
   readonly #deps: BackupRunnerDeps;
   readonly #scheduler: BackupScheduler;
   #current: BackupConfig | null = null;
+  /** The configuration a rebuild failure has already been reported for. */
+  #reported: BackupConfig | null = null;
   #schedule: string;
   #s3: S3Client | null = null;
   #encrypter: Encrypter | null = null;
@@ -135,23 +137,45 @@ export class BackupRunner {
    * Compared by reference: `SettingsService` replaces the whole configuration
    * object on every write, so identity answers "has this changed" exactly, and
    * an S3 client is not something to rebuild on every tick.
+   *
+   * Nothing is assigned until everything that can throw has succeeded, and a
+   * failure keeps the destination that was working — the same rule
+   * `channelSource` follows, for the same reason. Assigning first meant one
+   * unparseable schedule left the scheduler armed on the old expression while
+   * `status()` reported the new one, and nothing ever tried again.
    */
   #refresh(): BackupConfig | null {
     const config = this.#deps.config();
     if (config === this.#current) return config;
 
-    this.#current = config;
-    this.#s3 = config
-      ? new S3Client({ config, fetch: this.#deps.fetch ?? globalThis.fetch, now: this.#deps.now })
-      : null;
-    this.#encrypter = config ? encrypterFor(config) : null;
+    try {
+      const s3 = config
+        ? new S3Client({ config, fetch: this.#deps.fetch ?? globalThis.fetch, now: this.#deps.now })
+        : null;
+      const encrypter = config ? encrypterFor(config) : null;
 
-    if (config && config.schedule !== this.#schedule) {
-      this.#schedule = config.schedule;
-      this.#scheduler.setSchedule(config.schedule);
+      if (config && config.schedule !== this.#schedule) {
+        this.#scheduler.setSchedule(config.schedule);
+        this.#schedule = config.schedule;
+      }
+
+      this.#current = config;
+      this.#s3 = s3;
+      this.#encrypter = encrypter;
+
+      return config;
+    } catch (error) {
+      // `#current` is deliberately not advanced, so the next call tries again.
+      // Logged once per configuration rather than per call: this runs on every
+      // scheduler tick and every read of the Backups screen.
+      if (config !== this.#reported) {
+        this.#reported = config;
+        this.#deps.log?.(
+          `The backup destination could not be applied; the previous one is still in use: ${String(error)}`,
+        );
+      }
+      return this.#current;
     }
-
-    return config;
   }
 }
 

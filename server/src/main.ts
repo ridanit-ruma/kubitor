@@ -86,7 +86,7 @@ async function bootstrap(): Promise<void> {
   // the boot that finds them missing, and is ignored from then on.
   const settings = await SettingsService.load({
     repo: new SettingsRepo(db, dialect),
-    sealer: sealerFor(config.settingsKey),
+    sealer: await sealerFor(config.settingsKey),
     seed: { notify: config.notify, backup: config.backup ?? null },
     ...(config.backupAgeIdentity === undefined ? {} : { ageIdentity: config.backupAgeIdentity }),
     now: () => Date.now(),
@@ -116,7 +116,10 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  const channels = channelSource(() => settings.notify);
+  const channels = channelSource(
+    () => settings.notify,
+    (message) => logger.warn(message),
+  );
 
   const auth = new AuthService({
     accounts: accountsRepo,

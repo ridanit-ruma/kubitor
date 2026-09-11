@@ -44,4 +44,41 @@ describe('channelsFrom', () => {
   it('builds no telegram channel without both halves', () => {
     expect(channelsFrom({ minimumSeverity: 'warning' }).length).toBe(0);
   });
+
+  /**
+   * `https://mail.example.com` is the likeliest typo on a screen where every
+   * other field is an https URL, and nodemailer answers it with a `TypeError`.
+   * One bad item drops that item and nothing else — the rule the ingest
+   * pipeline lives by. The version this replaces took the whole set with it,
+   * and, through the boot-time log line that reads the set, the server.
+   */
+  it('drops the email channel a bad smtp URL would throw on, and keeps the rest', () => {
+    const logged: string[] = [];
+    const bindings = channelsFrom(
+      {
+        discordWebhook: 'https://discord.com/api/webhooks/1/a',
+        smtp: {
+          url: 'https://mail.example.com',
+          from: 'kubitor@example.com',
+          to: 'ops@example.com',
+        },
+        webhookUrl: 'https://example.com/hook',
+        minimumSeverity: 'warning',
+      },
+      (message) => logged.push(message),
+    );
+
+    expect(bindings.map((b) => b.channel.id)).toEqual(['discord', 'webhook']);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('smtp.url');
+  });
+
+  it('says nothing and builds nothing extra when no logger was given', () => {
+    const bindings = channelsFrom({
+      smtp: { url: 'https://mail.example.com', from: 'a@example.com', to: 'b@example.com' },
+      minimumSeverity: 'warning',
+    });
+
+    expect(bindings).toEqual([]);
+  });
 });

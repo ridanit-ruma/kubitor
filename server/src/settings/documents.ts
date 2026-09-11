@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isCronExpression } from '../backup/cron.js';
 import { SEALED } from './secrets.js';
 
 /** The keys these two documents live under in the `settings` table. */
@@ -53,10 +54,18 @@ export type NotifyDocument = z.infer<typeof NOTIFY_DOCUMENT>;
  *
  * `ageRecipient` is a public half and is likewise stored readably. The matching
  * identity stays in the environment: see the spec.
+ *
+ * `schedule` is parsed on the way in as well as on the way out. The write path
+ * has always refused an expression that does not parse; without the same check
+ * here, one that reached the row by any other route — seeded from an older
+ * environment, edited by hand — made the scheduler's constructor throw during
+ * boot, and the environment could no longer be edited to take it back. Refusing
+ * the document instead falls to `EMPTY_BACKUP`: backups off, logged once, and a
+ * server that starts.
  */
 export const BACKUP_DOCUMENT = z.object({
   version: z.literal(1),
-  schedule: z.string().min(1),
+  schedule: z.string().min(1).refine(isCronExpression, 'is not a five-field cron expression'),
   ageRecipient: z.string().min(1).optional(),
   destination: z
     .object({

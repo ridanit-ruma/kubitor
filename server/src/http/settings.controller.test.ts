@@ -144,6 +144,49 @@ describe('PUT /api/settings/notify', () => {
     expect(response.body.field).toBe('discord.webhookUrl');
   });
 
+  /**
+   * The typo that cost a boot loop. `https://mail.example.com` parses as a URL,
+   * so the old check passed it, it was sealed and stored — and from then on
+   * every rebuild of the channels threw `TypeError` out of nodemailer, including
+   * the one `main.ts` performs after `listen`, where nothing catches. The
+   * Deployment could not take it back; only sqlite3 on the volume could.
+   */
+  it('refuses an https URL in the SMTP field, naming it', async () => {
+    const response = await http()
+      .put('/api/settings/notify')
+      .set('Cookie', adminCookie)
+      .send({
+        ...(await currentNotify()),
+        smtp: {
+          url: 'https://mail.example.com',
+          from: 'kubitor@example.com',
+          to: 'ops@example.com',
+        },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('invalid_settings');
+    expect(response.body.field).toBe('smtp.url');
+    expect(harness.settings.notify.smtp).toBeUndefined();
+  });
+
+  it('takes an smtps URL in the same field', async () => {
+    const response = await http()
+      .put('/api/settings/notify')
+      .set('Cookie', adminCookie)
+      .send({
+        ...(await currentNotify()),
+        smtp: {
+          url: 'smtps://user:pass@smtp.example.com:465',
+          from: 'kubitor@example.com',
+          to: 'ops@example.com',
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.changed).toContain('smtp.url');
+  });
+
   it('refuses a body that is not a settings document at all', async () => {
     const response = await http()
       .put('/api/settings/notify')
@@ -226,6 +269,64 @@ describe('with no KUBITOR_SETTINGS_KEY', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.changed).toEqual(['minimumSeverity']);
+  });
+});
+
+/**
+ * The other half of the same failure, and the half a form can no longer cause:
+ * a document that already holds an SMTP URL nodemailer will not open. The
+ * environment seed writes one without ever passing through the form's
+ * validation, which is exactly how an upgrade fills these documents.
+ */
+describe('with an unusable SMTP URL already in the document', () => {
+  beforeEach(async () => {
+    await harness.close();
+    harness = await createTestApp({
+      config: {
+        settingsKey: await generateIdentity(),
+        notify: {
+          discordWebhook: 'https://discord.com/api/webhooks/1/abc',
+          smtp: {
+            url: 'https://mail.example.com',
+            from: 'kubitor@example.com',
+            to: 'ops@example.com',
+          },
+          minimumSeverity: 'warning',
+        },
+      },
+    });
+    await seedAccount(harness, 'admin');
+    adminCookie = await cookieFor('admin');
+  });
+
+  it('serves, and keeps delivering to the channels that do work', async () => {
+    const alerts = await http().get('/api/alerts').set('Cookie', adminCookie);
+
+    expect(alerts.status).toBe(200);
+    expect(alerts.body.delivery.configured).toBe(true);
+  });
+
+  it('says which channel it dropped, and why', async () => {
+    await http().get('/api/alerts').set('Cookie', adminCookie);
+
+    expect(harness.logs.some((line) => line.includes('smtp.url'))).toBe(true);
+  });
+
+  it('lets the form correct it, with no restart', async () => {
+    const saved = await http()
+      .put('/api/settings/notify')
+      .set('Cookie', adminCookie)
+      .send({
+        ...(await currentNotify()),
+        smtp: {
+          url: 'smtp://localhost:2525',
+          from: 'kubitor@example.com',
+          to: 'ops@example.com',
+        },
+      });
+
+    expect(saved.status).toBe(200);
+    expect(harness.settings.notify.smtp?.url).toBe('smtp://localhost:2525');
   });
 });
 

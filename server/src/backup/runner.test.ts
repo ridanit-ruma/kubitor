@@ -132,4 +132,41 @@ describeEachDialect('BackupRunner', (ctx) => {
   it('refuses to run by hand with nowhere to put it', async () => {
     await expect(runner(() => null).runNow()).rejects.toThrow(/no bucket/);
   });
+
+  /**
+   * A schedule the runner cannot arm used to leave it half-moved: `#current`
+   * and `#schedule` were assigned before `setSchedule` threw, so the scheduler
+   * stayed on the old expression while `status()` reported the new one, and
+   * nothing ever tried again. Stored documents are validated now, so this is
+   * the belt to that brace — the same ordering `channelSource` follows.
+   */
+  it('keeps the destination it had when a new one cannot be applied', async () => {
+    const logged: string[] = [];
+    let config: BackupConfig | null = DESTINATION;
+    const backup = new BackupRunner({
+      config: () => config,
+      db: ctx.db,
+      records,
+      now: () => new Date('2026-09-11T00:00:00Z'),
+      fetch: async () => new Response('', { status: 200 }),
+      log: (message) => logged.push(message),
+    });
+    const before = (await backup.status()) as { schedule: string; nextRunAt: number | null };
+
+    config = { ...DESTINATION, bucket: 'somewhere-else', schedule: 'every day at 3' };
+    const after = (await backup.status()) as {
+      bucket: string;
+      schedule: string;
+      nextRunAt: number | null;
+    };
+
+    // Twice, because this runs on every scheduler tick and every status poll:
+    // the failure is retried, and reported once.
+    await backup.status();
+
+    expect(after.bucket).toBe('kubitor-backups');
+    expect(after.schedule).toBe(before.schedule);
+    expect(after.nextRunAt).toBe(before.nextRunAt);
+    expect(logged.filter((line) => line.includes('previous one is still in use'))).toHaveLength(1);
+  });
 });

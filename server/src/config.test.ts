@@ -67,4 +67,37 @@ describe('loadConfig', () => {
       4 * 60 * 60 * 1000,
     );
   });
+
+  /**
+   * `age-keygen` prints two comment lines above the key, so pasting the wrong
+   * line is the expected mistake. Caught here it is one line naming the
+   * variable; caught later it was an age error naming nothing, thrown from a
+   * promise nobody had awaited, which Node answers by ending the process.
+   */
+  it('rejects a settings key that is not an age identity', () => {
+    expect(() =>
+      loadConfig(env({ KUBITOR_SETTINGS_KEY: '# created: 2026-09-11T00:00:00Z' })),
+    ).toThrow(/KUBITOR_SETTINGS_KEY/);
+  });
+
+  it('accepts an age identity as the settings key', () => {
+    const key = `AGE-SECRET-KEY-1${'Q'.repeat(43)}`;
+
+    expect(loadConfig(env({ KUBITOR_SETTINGS_KEY: key })).settingsKey).toBe(key);
+  });
+
+  /**
+   * This value is seeded into the stored document on the first boot that finds
+   * none, and the environment is ignored from then on — so an expression that
+   * does not parse has to be refused before it is written, not after.
+   */
+  it('rejects a backup schedule that is not a cron expression', () => {
+    expect(() => loadConfig(env({ KUBITOR_BACKUP_SCHEDULE: 'every day at 3' }))).toThrow(
+      /KUBITOR_BACKUP_SCHEDULE/,
+    );
+  });
+
+  it('accepts a five-field backup schedule', () => {
+    expect(() => loadConfig(env({ KUBITOR_BACKUP_SCHEDULE: '*/15 * * * *' }))).not.toThrow();
+  });
 });

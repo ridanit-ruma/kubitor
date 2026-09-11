@@ -73,6 +73,21 @@ describe('BACKUP_DOCUMENT', () => {
     expect(BACKUP_DOCUMENT.safeParse(document).success).toBe(true);
   });
 
+  /**
+   * The write path has always refused an expression that does not parse. The
+   * read path had not, so one that reached the row another way — seeded from an
+   * environment, edited by hand — was handed to the scheduler's constructor
+   * during boot, where it threw and took the server with it, permanently: the
+   * document existed, so the environment was no longer consulted. Refusing it
+   * here falls to `EMPTY_BACKUP` instead, which is backups off and a log line.
+   */
+  it('refuses a schedule that is not a five-field cron expression', () => {
+    const document = { version: 1, schedule: 'every day at 3' };
+
+    expect(BACKUP_DOCUMENT.safeParse(document).success).toBe(false);
+    expect(parseBackup(document)).toBeUndefined();
+  });
+
   it('refuses a destination with no secret key', () => {
     const document = {
       version: 1,

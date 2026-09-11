@@ -47,6 +47,14 @@ export function ageSealer(identity: string): Sealer {
   // the string; awaiting it per seal costs nothing after the first.
   const recipient = identityToRecipient(identity);
 
+  // A promise nobody is awaiting yet, that rejects, is an unhandled rejection —
+  // and Node's default for one of those is to terminate the process. A
+  // malformed identity would otherwise kill the server at boot with age's own
+  // `invalid separator "1"`, which names neither the variable nor the fix. The
+  // handler makes the rejection somebody's, so the failure waits for whoever
+  // awaits `recipient` below.
+  void recipient.catch(() => undefined);
+
   return {
     canSeal: true,
 
@@ -94,6 +102,25 @@ export function plaintextSealer(): Sealer {
   };
 }
 
-export function sealerFor(identity: string | undefined): Sealer {
-  return identity ? ageSealer(identity) : plaintextSealer();
+/**
+ * The sealer a deployment gets, with the identity proven usable first.
+ *
+ * Asynchronous because that proof is: the identity is checked here, once, at
+ * boot, so a value pasted out of the wrong line of `age-keygen` output is a
+ * startup error naming the variable rather than a failure that surfaces at the
+ * first save — or, on an install that never writes a secret, never at all while
+ * the process dies anyway.
+ */
+export async function sealerFor(identity: string | undefined): Promise<Sealer> {
+  if (!identity) return plaintextSealer();
+
+  try {
+    await identityToRecipient(identity);
+  } catch (error) {
+    throw new Error(
+      `KUBITOR_SETTINGS_KEY is not a valid age identity; generate one with age-keygen and use the AGE-SECRET-KEY-1 line, not the comments above it (${String(error)})`,
+    );
+  }
+
+  return ageSealer(identity);
 }
