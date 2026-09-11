@@ -159,6 +159,25 @@ describe('mergeNotify', () => {
     ).rejects.toThrow(SettingsInvalid);
   });
 
+  it('refuses a webhook that is not a URL, naming the field', async () => {
+    const { canStoreSecrets: _ignored, ...input } = toNotifyView(EMPTY_NOTIFY, true);
+
+    await expect(
+      mergeNotify({ ...input, discord: { webhookUrl: 'not a url' } }, EMPTY_NOTIFY, sealer),
+    ).rejects.toMatchObject({ field: 'discord.webhookUrl' });
+  });
+
+  it('lets the stored sentinel and a cleared field through the URL check untouched', async () => {
+    const current = await withDiscord('https://discord.com/api/webhooks/1/abc');
+    const { canStoreSecrets: _ignored, ...input } = toNotifyView(current, true);
+
+    const { changed } = await mergeNotify(input, current, sealer);
+    expect(changed).toEqual([]);
+
+    const cleared = await mergeNotify({ ...input, discord: { webhookUrl: '' } }, current, sealer);
+    expect(cleared.document.discord).toBeUndefined();
+  });
+
   it('refuses to write a secret when there is no key to seal it with', async () => {
     const { canStoreSecrets: _ignored, ...input } = toNotifyView(EMPTY_NOTIFY, false);
 

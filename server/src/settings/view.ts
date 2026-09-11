@@ -120,11 +120,35 @@ function plainField(input: string, current: string | undefined, changed: string[
   return input;
 }
 
+/**
+ * A webhook address that is not a URL fails silently at 3am, and the failure
+ * surfaces as an error string carrying the address back to whoever asked. Refuse
+ * it at save time instead, which is also what the test button exists to make
+ * unnecessary.
+ */
+function requireUrl(value: string | null, field: string): void {
+  if (value === null || value === '' || value === SECRET_KEPT) return;
+  try {
+    new URL(value);
+  } catch {
+    throw new SettingsInvalid(field, 'must be a URL');
+  }
+}
+
 export async function mergeNotify(
   input: NotifyInput,
   current: NotifyDocument,
   sealer: Sealer,
 ): Promise<{ document: NotifyDocument; changed: string[] }> {
+  // Checked on the plaintext, before anything is sealed: these four values are
+  // handed to `fetch` or nodemailer as a URL, and a value that fails to parse
+  // there comes back in an error string a caller can read — the same string
+  // `GET` redacts everywhere else.
+  requireUrl(input.discord.webhookUrl, 'discord.webhookUrl');
+  requireUrl(input.slack.webhookUrl, 'slack.webhookUrl');
+  requireUrl(input.webhook.url, 'webhook.url');
+  requireUrl(input.smtp.url, 'smtp.url');
+
   const changed: string[] = [];
 
   const note = (name: string, outcome: SecretOutcome): Sealed | undefined => {

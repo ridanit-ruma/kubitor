@@ -128,6 +128,22 @@ describe('PUT /api/settings/notify', () => {
     expect(response.body.field).toContain('telegram');
   });
 
+  /**
+   * A webhook that does not parse as a URL would otherwise reach `fetch` and
+   * come back as an error string containing the value itself — the same
+   * string `GET` is supposed to redact everywhere else.
+   */
+  it('refuses a webhook that is not a URL, naming the field', async () => {
+    const response = await http()
+      .put('/api/settings/notify')
+      .set('Cookie', adminCookie)
+      .send({ ...(await currentNotify()), discord: { webhookUrl: 'not a url' } });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('invalid_settings');
+    expect(response.body.field).toBe('discord.webhookUrl');
+  });
+
   it('refuses a body that is not a settings document at all', async () => {
     const response = await http()
       .put('/api/settings/notify')
@@ -321,5 +337,49 @@ describe('what the other roles cannot do', () => {
       .send({ channel: 'discord' });
 
     expect(response.status).toBe(403);
+  });
+
+  /**
+   * The menu hiding these two forms is a courtesy; these routes being the
+   * control is the point. A valid body is sent so the refusal is unambiguously
+   * about the role, never about something the body validator would have
+   * caught anyway.
+   */
+  it.each([
+    ['ops', '/api/settings/notify'],
+    ['guest', '/api/settings/notify'],
+  ])('refuses %s a PUT of %s', async (username, path) => {
+    const response = await http()
+      .put(path)
+      .set('Cookie', await cookieFor(username))
+      .send(await currentNotify());
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('forbidden');
+  });
+
+  it.each([
+    ['ops', '/api/settings/backup'],
+    ['guest', '/api/settings/backup'],
+  ])('refuses %s a PUT of %s', async (username, path) => {
+    const response = await http()
+      .put(path)
+      .set('Cookie', await cookieFor(username))
+      .send({
+        schedule: '5 4 * * *',
+        ageRecipient: '',
+        destination: {
+          endpoint: 'https://s3.example.com',
+          bucket: 'kubitor-backups',
+          prefix: '',
+          region: 'eu-central-1',
+          accessKey: 'AKIA',
+          secretKey: 's3cr3t',
+        },
+        currentPassword: TEST_PASSWORD,
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('forbidden');
   });
 });
