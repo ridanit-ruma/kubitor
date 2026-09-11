@@ -267,9 +267,9 @@ describeEachDialect('Dispatcher', (ctx) => {
   /**
    * The behavioural claim behind the unconditional `start()`: a server that
    * booted with no channel must still deliver once one is added from the
-   * dashboard, with no restart. Driving this through the real interval — not a
+   * dashboard, with no restart. Driving this through the interval — not a
    * direct `drain()` call — is the point: a timer that was never armed because
-   * nothing was configured yet would leave this hanging forever.
+   * nothing was configured yet never calls `drain` at all, and this fails.
    */
   it('delivers to a channel added after start, once the drain timer fires', async () => {
     const target = recording();
@@ -284,7 +284,15 @@ describeEachDialect('Dispatcher', (ctx) => {
       now: () => NOW,
     });
 
-    vi.useFakeTimers();
+    // Fake the interval and nothing else. A blanket `useFakeTimers()` also
+    // fakes the timers every other library in the process is using, and
+    // advancing the clock by DRAIN_INTERVAL_MS then fires them too — pg's
+    // connection pool reaps an idle client on a 10s `setTimeout`, the same
+    // 10s this test advances. The Dispatcher's own interval is the only clock
+    // this test has any business controlling.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const drained = vi.spyOn(dispatch, 'drain');
+
     try {
       // Booted with nothing configured.
       dispatch.start();
@@ -296,8 +304,18 @@ describeEachDialect('Dispatcher', (ctx) => {
       // Let the drain timer itself fire, rather than calling drain() directly.
       await vi.advanceTimersByTimeAsync(DRAIN_INTERVAL_MS);
 
+      // That the interval armed and fired is the claim being tested, and it is
+      // true or false regardless of how long a query takes.
+      expect(drained).toHaveBeenCalledTimes(1);
+
+      // The interval callback does not await the drain, so this test does.
+      // Without it the assertion below races the database: a synchronous
+      // SQLite query has finished by now, a PostgreSQL round trip has not.
+      await Promise.all(drained.mock.results.map((result) => result.value));
+
       expect(target.sent).toHaveLength(1);
     } finally {
+      drained.mockRestore();
       dispatch.stop();
       vi.useRealTimers();
     }
