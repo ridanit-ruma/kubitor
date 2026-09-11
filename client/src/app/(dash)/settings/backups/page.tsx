@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Pencil, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -28,6 +28,7 @@ import {
 import { ApiError, api, type BackupStatus } from '@/lib/api';
 import { formatBytes, formatTimestamp } from '@/lib/format';
 import { useNow } from '@/lib/live';
+import { DestinationDialog } from './destination-dialog';
 
 /** What each encryption mode actually means for the bucket. */
 const ENCRYPTION: Record<string, { label: string; detail: string }> = {
@@ -60,6 +61,7 @@ const ENCRYPTION: Record<string, { label: string; detail: string }> = {
 export default function BackupsPage() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [asking, setAsking] = useState(false);
+  const [editing, setEditing] = useState(false);
   const now = useNow();
 
   const load = useCallback(async () => {
@@ -80,8 +82,12 @@ export default function BackupsPage() {
           </Link>
         </Button>
         <h1 className="text-base font-semibold tracking-tight">Backups</h1>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditing(true)}>
+          <Pencil className="size-3.5" />
+          Edit destination
+        </Button>
         {status?.configured && (
-          <Button size="sm" className="ml-auto" onClick={() => setAsking(true)}>
+          <Button size="sm" onClick={() => setAsking(true)}>
             <Play className="size-3.5" />
             Back up now
           </Button>
@@ -179,6 +185,15 @@ export default function BackupsPage() {
           await load();
         }}
       />
+
+      <DestinationDialog
+        open={editing}
+        onClose={() => setEditing(false)}
+        onDone={async () => {
+          setEditing(false);
+          await load();
+        }}
+      />
     </div>
   );
 }
@@ -202,17 +217,11 @@ function NotConfigured() {
         credentials, integration settings and history in one database; losing the volume loses all
         of it.
       </p>
-      <pre className="overflow-x-auto rounded border border-line bg-muted px-3 py-2 font-mono text-xs">
-        {`KUBITOR_BACKUP_S3_ENDPOINT=https://s3.eu-central-1.amazonaws.com
-KUBITOR_BACKUP_S3_BUCKET=my-kubitor-backups
-KUBITOR_BACKUP_S3_ACCESS_KEY=...
-KUBITOR_BACKUP_S3_SECRET_KEY=...
-KUBITOR_BACKUP_AGE_RECIPIENT=age1...   # optional, and recommended`}
-      </pre>
       <p className="text-sm text-muted-foreground">
-        Works with any S3-compatible store \u2014 AWS, MinIO, Backblaze B2, Cloudflare R2, Ceph RGW.
-        Prefer somewhere the cluster does not depend on: a backup on storage served by the cluster
-        it backs up survives none of the events backups exist for.
+        Use <strong>Edit destination</strong> above. Works with any S3-compatible store \u2014 AWS,
+        MinIO, Backblaze B2, Cloudflare R2, Ceph RGW. Prefer somewhere the cluster does not depend
+        on: a backup on storage served by the cluster it backs up survives none of the events
+        backups exist for.
       </p>
       <p className="text-sm text-muted-foreground">
         Running PostgreSQL? kubitor does not back that up \u2014 use your database\u2019s own backup
